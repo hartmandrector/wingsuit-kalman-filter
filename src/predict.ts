@@ -6,13 +6,20 @@ import { sub, magnitude } from './vector.js'
 import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from './smoothness.js'
 
 // Which filter to use
-const filterType: 'motionestimator' | 'kalman' = 'kalman' // Change to 'kalman' to use Kalman filter
-const estimator = //filterType === 'motionestimator'
-  //? new MotionEstimator({ alpha: 0.2, estimateVelocity: false })
-  //: 
-  new KalmanFilter3D()
+let filterType: 'motionestimator' | 'kalman' = 'motionestimator' // Change to 'kalman' to use Kalman filter
+let currentAlpha = 0.9
+let estimator = filterType === 'motionestimator'
+  ? new MotionEstimator({ alpha: currentAlpha, estimateVelocity: false })
+  : new KalmanFilter3D()
 
 const refreshRate = 90 // Hz
+
+export function setAlpha(alpha: number): void {
+  currentAlpha = alpha
+  if (filterType === 'motionestimator') {
+    estimator = new MotionEstimator({ alpha: currentAlpha, estimateVelocity: false })
+  }
+}
 
 export interface ErrorStats {
   position: {

@@ -134,6 +134,7 @@ export class KalmanFilter3D {
     return [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_current, ay_current, az_current, kl, kd, roll]
   }
 
+  // predict at
   predictstate(deltaTime: number): number[] {
     if (deltaTime <= 0) return this.state
 
@@ -258,7 +259,7 @@ export class KalmanFilter3D {
       }
     }
 
-    // Update wingsuit parameters from kalman acceleration, speed
+    // Update wingsuit parameters from kalman acceleration,
     this.updateWingsuitParameters(this.state[5], -this.state[4], this.state[3], this.state[8], -this.state[7], this.state[6])// measuredAz, -measuredAy, measuredAx)
 
  if (this.lastUpdateTime !== undefined) {

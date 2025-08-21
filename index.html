@@ -14,6 +14,18 @@
         <p>Drop a CSV file here or click to select</p>
       </div>
     </div>
+    
+    <!-- Controls panel -->
+    <div id="controls-panel">
+      <div id="alpha-control">
+        <label for="alpha-slider">Alpha: <span id="alpha-value">0.9</span></label>
+        <input type="range" id="alpha-slider" min="0.01" max="1" step="0.01" value="0.9">
+      </div>
+      <div id="point-info">
+        <div id="point-details"></div>
+      </div>
+    </div>
+    
     <canvas id="plot-canvas" width="800" height="600"></canvas>
     <div id="drag-overlay">
       <p>Drop new CSV file to replace</p>

@@ -122,6 +122,53 @@ h1 {
   display: none;
 }
 
+#controls-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 15px;
+  border-radius: 8px;
+  min-width: 200px;
+  z-index: 1001;
+  font-family: system-ui;
+  display: none;
+}
+
+#controls-panel.show {
+  display: block;
+}
+
+#alpha-control {
+  margin-bottom: 15px;
+}
+
+#alpha-control label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+#alpha-slider {
+  width: 100%;
+  margin: 5px 0;
+}
+
+#point-info {
+  border-top: 1px solid #555;
+  padding-top: 15px;
+}
+
+#point-details {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+#point-details div {
+  margin-bottom: 3px;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

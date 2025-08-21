@@ -1,8 +1,10 @@
 import './style.css'
 import { parseCSV } from './csvParser.js'
 import { plotData } from './plotter.js'
-import { generatePredictedPoints } from './predict.js'
+import { generatePredictedPoints, setAlpha } from './predict.js'
 import { MLocation, PlotSeries } from './types.js'
+
+let currentGpsPoints: MLocation[] = []
 
 const dropZone = document.getElementById('drop-zone')
 const fileInput = document.getElementById('file-input') as HTMLInputElement | null
@@ -10,6 +12,24 @@ const fileInput = document.getElementById('file-input') as HTMLInputElement | nu
 if (dropZone && fileInput) {
   dropZone.addEventListener('click', () => fileInput.click())
   fileInput.addEventListener('change', handleFileSelect)
+}
+
+// Setup alpha slider
+const alphaSlider = document.getElementById('alpha-slider') as HTMLInputElement | null
+const alphaValue = document.getElementById('alpha-value') as HTMLElement | null
+
+if (alphaSlider && alphaValue) {
+  alphaSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const alpha = parseFloat(target.value)
+    alphaValue.textContent = alpha.toFixed(2)
+    setAlpha(alpha)
+    
+    // Regenerate plot if we have data
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
 }
 
 // Make entire window accept drag and drop
@@ -79,6 +99,29 @@ function processFile(file: File): void {
   reader.readAsText(file)
 }
 
+function regeneratePlot(): void {
+  if (currentGpsPoints.length === 0) return
+  
+  // Generate new predicted points with current alpha
+  const predictedPoints = generatePredictedPoints(currentGpsPoints)
+
+  // Create plot series
+  const series: PlotSeries[] = [
+    {
+      name: 'GPS Points',
+      data: currentGpsPoints,
+      style: { color: '#646cff', radius: 4 }
+    },
+    {
+      name: 'Predicted Points',
+      data: predictedPoints,
+      style: { color: '#ff4444', radius: 2 }
+    }
+  ]
+  
+  plotData(series)
+}
+
 function processCSVData(csv: string): void {
   const data = parseCSV(csv)
   console.log('Parsed CSV data:', data)
@@ -89,7 +132,8 @@ function processCSVData(csv: string): void {
   const altField = 'hMSL'
   const timeField = 'time'
 
-  const gpsPoints: MLocation[] = data.map((row, index) => ({
+  // Store GPS points for regeneration
+  currentGpsPoints = data.map((row, index) => ({
     lat: parseFloat(row[latField]),
     lng: parseFloat(row[lonField]),
     alt: altField ? parseFloat(row[altField]) || 0 : 0,
@@ -102,41 +146,32 @@ function processCSVData(csv: string): void {
     sAcc: parseFloat(row['sAcc']) || 0
   })).filter(point => !isNaN(point.lat) && !isNaN(point.lng))
 
-  if (gpsPoints.length === 0) {
+  if (currentGpsPoints.length === 0) {
     alert('No valid coordinates found')
     return
   }
 
-  // Generate filtered GPS points and predicted points
-  const predictedPoints = generatePredictedPoints(gpsPoints)
-
-  // Create plot series
-  const series: PlotSeries[] = [
-    {
-      name: 'GPS Points',
-      data: gpsPoints,
-      style: { color: '#646cff', radius: 4 }
-    },
-    {
-      name: 'Predicted Points',
-      data: predictedPoints,
-      style: { color: '#ff4444', radius: 2 }
-    }
-  ]
-  
-  // Hide dropzone and make canvas fullscreen
+  // Hide dropzone and show controls
   const app = document.getElementById('app')
   const canvas = document.getElementById('plot-canvas') as HTMLCanvasElement | null
+  const controlsPanel = document.getElementById('controls-panel') as HTMLElement | null
   
   if (!app || !canvas) return
   
   app.classList.add('hidden')
+  
+  if (controlsPanel) {
+    controlsPanel.classList.add('show')
+  }
+  
+  // Make canvas fullscreen
   canvas.classList.remove('fullscreen') // Remove any existing state first
   canvas.classList.add('fullscreen')
   canvas.width = window.innerWidth
   canvas.height = window.innerHeight
   
-  plotData(series)
+  // Generate initial plot
+  regeneratePlot()
 }
 
 async function loadDefaultFile(): Promise<void> {

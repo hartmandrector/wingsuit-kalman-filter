@@ -13,6 +13,7 @@ let ctx: CanvasRenderingContext2D | undefined
 let isDragging = false
 let lastMouseX = 0
 let lastMouseY = 0
+let hoveredPoint: PlotPoint | null = null
 
 export function plotData(series: PlotSeries[]): void {
   canvas = document.getElementById('plot-canvas') as HTMLCanvasElement
@@ -48,6 +49,9 @@ export function plotData(series: PlotSeries[]): void {
 
   // Set initial cursor style
   canvas.style.cursor = 'grab'
+
+  // Initialize point info
+  updatePointInfo(null)
 
   // Initial render
   renderPlot(allSeries)
@@ -116,36 +120,44 @@ function handleMouseDown(e: MouseEvent): void {
 }
 
 function handleMouseMove(e: MouseEvent): void {
-  if (!canvas || !isDragging) {
-    if (canvas) canvas.style.cursor = 'grab'
-    return
-  }
+  if (!canvas) return
 
   const rect = canvas.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
   const mouseY = e.clientY - rect.top
 
-  const deltaX = mouseX - lastMouseX
-  const deltaY = mouseY - lastMouseY
+  if (isDragging) {
+    const deltaX = mouseX - lastMouseX
+    const deltaY = mouseY - lastMouseY
 
-  // Convert pixel delta to world coordinates
-  const viewWidth = getViewWidth()
-  const viewHeight = getViewHeight()
-  const leftMargin = 200
-  const rightMargin = 20
-  const topMargin = 20
-  const bottomMargin = 20
-  const plotWidth = canvas.width - leftMargin - rightMargin
-  const plotHeight = canvas.height - topMargin - bottomMargin
+    // Convert pixel delta to world coordinates
+    const viewWidth = getViewWidth()
+    const viewHeight = getViewHeight()
+    const leftMargin = 200
+    const rightMargin = 20
+    const topMargin = 20
+    const bottomMargin = 20
+    const plotWidth = canvas.width - leftMargin - rightMargin
+    const plotHeight = canvas.height - topMargin - bottomMargin
 
-  panX -= (deltaX / plotWidth) * viewWidth
-  panY += (deltaY / plotHeight) * viewHeight
+    panX -= (deltaX / plotWidth) * viewWidth
+    panY += (deltaY / plotHeight) * viewHeight
 
-  lastMouseX = mouseX
-  lastMouseY = mouseY
+    lastMouseX = mouseX
+    lastMouseY = mouseY
 
-  // Re-render with new pan
-  renderPlot(allSeries)
+    // Re-render with new pan
+    renderPlot(allSeries)
+  } else {
+    // Handle hover detection
+    const nearestPoint = findNearestPoint(mouseX, mouseY)
+    if (nearestPoint !== hoveredPoint) {
+      hoveredPoint = nearestPoint
+      updatePointInfo(hoveredPoint)
+      renderPlot(allSeries) // Re-render to show/hide hover highlight
+    }
+    canvas.style.cursor = 'grab'
+  }
 }
 
 function handleMouseUp(): void {
@@ -184,6 +196,91 @@ function getViewWidth(): number {
 function getViewHeight(): number {
   if (!originalBounds) return 0
   return (originalBounds.maxLat - originalBounds.minLat) / zoom
+}
+
+function findNearestPoint(screenX: number, screenY: number): PlotPoint | null {
+  if (!canvas || !originalBounds || allPoints.length === 0) return null
+
+  const leftMargin = 200
+  const rightMargin = 20
+  const topMargin = 20
+  const bottomMargin = 20
+  const plotWidth = canvas.width - leftMargin - rightMargin
+  const plotHeight = canvas.height - topMargin - bottomMargin
+
+  // Calculate current view bounds
+  const viewWidth = getViewWidth()
+  const viewHeight = getViewHeight()
+  const centerLng = (originalBounds.minLng + originalBounds.maxLng) / 2
+  const centerLat = (originalBounds.minLat + originalBounds.maxLat) / 2
+
+  const minLng = centerLng + panX - viewWidth / 2
+  const maxLng = centerLng + panX + viewWidth / 2
+  const minLat = centerLat + panY - viewHeight / 2
+  const maxLat = centerLat + panY + viewHeight / 2
+
+  let nearestPoint: PlotPoint | null = null
+  let minDistance = Infinity
+  const hoverRadius = 15 // pixels
+
+  for (const point of allPoints) {
+    const x = leftMargin + ((point.lng - minLng) / (maxLng - minLng)) * plotWidth
+    const y = topMargin + plotHeight - ((point.lat - minLat) / (maxLat - minLat)) * plotHeight
+
+    // Only consider points within view
+    if (x >= leftMargin && x <= leftMargin + plotWidth && y >= topMargin && y <= topMargin + plotHeight) {
+      const distance = Math.sqrt((x - screenX) ** 2 + (y - screenY) ** 2)
+      if (distance < hoverRadius && distance < minDistance) {
+        minDistance = distance
+        nearestPoint = point
+      }
+    }
+  }
+
+  return nearestPoint
+}
+
+function updatePointInfo(point: PlotPoint | null): void {
+  const pointDetails = document.getElementById('point-details')
+  if (!pointDetails) return
+
+  if (!point) {
+    pointDetails.innerHTML = '<div>Hover over a point to see details</div>'
+    return
+  }
+
+  let time = 'N/A'
+  if (point.time) {
+    const date = new Date(point.time)
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const seconds = date.getSeconds().toString().padStart(2, '0')
+    const milliseconds = date.getMilliseconds().toString().padStart(3, '0')
+    time = `${hours}:${minutes}:${seconds}.${milliseconds}`
+  }
+  const altitude = point.alt ? `${point.alt.toFixed(1)} m` : 'N/A'
+  
+  let velocityInfo = ''
+  // Check if this is an MLocation (has velocity data)
+  const mlocation = point as any
+  if (mlocation.velN !== undefined && mlocation.velE !== undefined && mlocation.velD !== undefined) {
+    const speed = Math.sqrt(mlocation.velN ** 2 + mlocation.velE ** 2 + mlocation.velD ** 2)
+    velocityInfo = `
+      <div><strong>Speed:</strong> ${speed.toFixed(1)} m/s (${(speed * 2.23694).toFixed(1)} mph)</div>
+      <div><strong>Vel N:</strong> ${mlocation.velN.toFixed(1)} m/s</div>
+      <div><strong>Vel E:</strong> ${mlocation.velE.toFixed(1)} m/s</div>
+      <div><strong>Vel D:</strong> ${mlocation.velD.toFixed(1)} m/s</div>
+    `
+  }
+
+  pointDetails.innerHTML = `
+    <div><strong>Position:</strong></div>
+    <div>Lat: ${point.lat.toFixed(6)}°</div>
+    <div>Lng: ${point.lng.toFixed(6)}°</div>
+    <div>Alt: ${altitude}</div>
+    <div><strong>Time:</strong> ${time}</div>
+    ${velocityInfo}
+  `
 }
 
 function renderPlot(series: PlotSeries[]): void {
@@ -228,6 +325,17 @@ function renderPlot(series: PlotSeries[]): void {
       // Only draw if point is within view
       if (x >= leftMargin && x <= leftMargin + plotWidth && y >= topMargin && y <= topMargin + plotHeight) {
         ctx.beginPath()
+        
+        // Highlight hovered point
+        if (hoveredPoint === point) {
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = 2
+          ctx.arc(x, y, plotSeries.style.radius + 2, 0, 2 * Math.PI)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.fillStyle = plotSeries.style.color
+        }
+        
         ctx.arc(x, y, plotSeries.style.radius, 0, 2 * Math.PI)
         ctx.fill()
       }
