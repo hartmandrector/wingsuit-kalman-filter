@@ -6,34 +6,149 @@ import { sub, magnitude } from './vector.js'
 import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from './smoothness.js'
 
 // Which filter to use
-let filterType: 'motionestimator' | 'kalman' = 'motionestimator' // Change to 'kalman' to use Kalman filter
+let filterType: 'motionestimator' | 'kalman' = 'motionestimator'
+
+// Motion Estimator parameters
 let currentAlpha = 0.9
 let currentAlphaVelocity = 0.9
 let currentAlphaAcceleration = 0.9
-let estimator = filterType === 'motionestimator'
-  ? new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
-  : new KalmanFilter3D()
+
+// Kalman Filter parameters
+let kalmanProcessNoise = {
+  position: 0.1,
+  velocity: 2.0,
+  acceleration: 10.0
+}
+let kalmanMeasurementNoise = {
+  position: 25.0,
+  velocity: 1.0
+}
+
+let estimator = createEstimator()
+
+function createEstimator() {
+  if (filterType === 'motionestimator') {
+    return new MotionEstimator({ 
+      alpha: currentAlpha, 
+      alphaVelocity: currentAlphaVelocity, 
+      alphaAcceleration: currentAlphaAcceleration, 
+      estimateVelocity: true 
+    })
+  } else {
+    const kalman = new KalmanFilter3D()
+    updateKalmanParameters(kalman)
+    return kalman
+  }
+}
+
+function updateKalmanParameters(kalman: KalmanFilter3D) {
+  // Update process noise covariance (Q matrix)
+  kalman.setProcessNoise(
+    kalmanProcessNoise.position,
+    kalmanProcessNoise.velocity,
+    kalmanProcessNoise.acceleration,
+    0.01 // Fixed wingsuit parameter
+  )
+  
+  // Update measurement noise covariance (R matrix)  
+  kalman.setMeasurementNoise(
+    kalmanMeasurementNoise.position,
+    kalmanMeasurementNoise.velocity
+  )
+}
 
 const refreshRate = 90 // Hz
 
+export function setFilterType(type: 'motionestimator' | 'kalman'): void {
+  filterType = type
+  estimator = createEstimator()
+}
+
+export function getFilterType(): 'motionestimator' | 'kalman' {
+  return filterType
+}
+
+// Motion Estimator controls
 export function setAlpha(alpha: number): void {
   currentAlpha = alpha
   if (filterType === 'motionestimator') {
-    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
+    estimator = createEstimator()
   }
 }
 
 export function setAlphaVelocity(alphaVelocity: number): void {
   currentAlphaVelocity = alphaVelocity
   if (filterType === 'motionestimator') {
-    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
+    estimator = createEstimator()
   }
 }
 
 export function setAlphaAcceleration(alphaAcceleration: number): void {
   currentAlphaAcceleration = alphaAcceleration
   if (filterType === 'motionestimator') {
-    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
+    estimator = createEstimator()
+  }
+}
+
+// Kalman Filter controls with logarithmic scaling
+function quadraticScale(value: number): number {
+  // Maps 0-1 to 0.0001-25 using quadratic scaling
+  return 0.0001 + (value * value) * (25 - 0.0001)
+}
+
+function inverseQuadraticScale(scaledValue: number): number {
+  // Maps 0.0001-25 back to 0-1
+  return Math.sqrt((scaledValue - 0.0001) / (25 - 0.0001))
+}
+
+export function signedQuadraticScale(value: number): number {
+  // Maps -1 to 1 to -25 to 25 using quadratic scaling that preserves sign
+  const sign = Math.sign(value)
+  const absValue = Math.abs(value)
+  const scaled = absValue * absValue * 25
+  return sign * scaled
+}
+
+export function inverseSignedQuadraticScale(scaledValue: number): number {
+  // Maps -25 to 25 back to -1 to 1
+  const sign = Math.sign(scaledValue)
+  const absValue = Math.abs(scaledValue)
+  const unscaled = Math.sqrt(absValue / 25)
+  return sign * unscaled
+}
+
+export function setKalmanProcessNoisePosition(value: number): void {
+  kalmanProcessNoise.position = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanProcessNoiseVelocity(value: number): void {
+  kalmanProcessNoise.velocity = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanProcessNoiseAcceleration(value: number): void {
+  kalmanProcessNoise.acceleration = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanMeasurementNoisePosition(value: number): void {
+  kalmanMeasurementNoise.position = signedQuadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanMeasurementNoiseVelocity(value: number): void {
+  kalmanMeasurementNoise.velocity = signedQuadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
   }
 }
 
@@ -127,7 +242,7 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
     const nextPoint = gpsPoints[index + 1]
     const endTime = nextPoint ? nextPoint.time : point.time + 2000 // 2 seconds after last GPS
 
-    for (let t = point.time ; t < endTime; t += 1000 / refreshRate) {
+    for (let t = point.time + 10 / refreshRate; t < endTime; t += 1000 / refreshRate) {
       const predicted = estimator.predictAt(t)
       if (predicted) {
         const predLatLon = ENUToLatLngAlt(predicted.position)

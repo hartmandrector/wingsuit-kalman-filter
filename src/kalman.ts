@@ -21,6 +21,13 @@ export class KalmanFilter3D {
   private u: number[]
   private lastUpdateTime: number | undefined
   private originGps: MLocation | undefined
+  
+  // Measurement noise offsets for user control
+  private measurementNoiseOffsets = {
+    position: 0,
+    velocity: 0,
+    acceleration: 0
+  }
 
   constructor() {
     // Extended state vector: [x, y, z, vx, vy, vz, ax, ay, az, kl, kd, roll]
@@ -212,12 +219,18 @@ export class KalmanFilter3D {
   }
 
   private updateR(hAcc: number, vAcc: number, sAcc: number): void {
-    // Update measurement noise covariance based on accuracy
-    // use error measurements from flysight
+    // Update measurement noise covariance based on accuracy with user offsets
+    // use error measurements from flysight plus user-controlled offsets
     this.R = createIdentityMatrix(6)
     for (let i = 0; i < 3; i++) {
-      this.R[i][i] = i === 1 ? vAcc  : hAcc  // GPS position measurement noise (use error from flysight)
-      this.R[i + 3][i + 3] = sAcc  // GPS velocity measurement noise (use error from flysight)
+      // Apply position offset, ensure positive values
+      const basePositionNoise = i === 1 ? vAcc : hAcc
+      const positionNoise = Math.max(0.0001, basePositionNoise + this.measurementNoiseOffsets.position)
+      this.R[i][i] = positionNoise
+      
+      // Apply velocity offset, ensure positive values
+      const velocityNoise = Math.max(0.0001, sAcc + this.measurementNoiseOffsets.velocity)
+      this.R[i + 3][i + 3] = velocityNoise
     }
   }
 
@@ -408,5 +421,25 @@ export class KalmanFilter3D {
     // Reset timestamps and origin
     this.lastUpdateTime = undefined
     this.originGps = undefined
+  }
+
+  setProcessNoise(position: number, velocity: number, acceleration: number, wingsuit: number): void {
+    // Update process noise covariance matrix Q
+    for (let i = 0; i < 3; i++) {
+      this.Q[i][i] = position // Position process noise
+      this.Q[i + 3][i + 3] = velocity // Velocity process noise
+      this.Q[i + 6][i + 6] = acceleration // Acceleration process noise
+    }
+    this.Q[9][9] = wingsuit   // kl process noise
+    this.Q[10][10] = wingsuit // kd process noise
+    this.Q[11][11] = wingsuit // roll process noise
+  }
+
+  setMeasurementNoise(position: number, velocity: number): void {
+    // Store the offset values that will be applied to FlySight accuracy values
+    this.measurementNoiseOffsets.position = position
+    this.measurementNoiseOffsets.velocity = velocity
+    // Acceleration offset is not used since we removed that slider
+    this.measurementNoiseOffsets.acceleration = 0
   }
 }

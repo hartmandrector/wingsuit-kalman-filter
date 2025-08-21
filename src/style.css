@@ -130,7 +130,10 @@ h1 {
   color: white;
   padding: 15px;
   border-radius: 8px;
-  min-width: 200px;
+  min-width: 250px;
+  max-width: 300px;
+  max-height: 80vh;
+  overflow-y: auto;
   z-index: 1001;
   font-family: system-ui;
   display: none;
@@ -140,29 +143,72 @@ h1 {
   display: block;
 }
 
-#alpha-control {
+#filter-type-control {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #555;
+}
+
+#filter-switch {
+  display: flex;
+  gap: 15px;
+  margin-top: 8px;
+}
+
+#filter-switch input[type="radio"] {
+  margin-right: 5px;
+}
+
+#filter-switch label {
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#motion-estimator-controls,
+#kalman-filter-controls {
   margin-bottom: 15px;
 }
 
-#alpha-velocity-control {
-  margin-bottom: 15px;
+#kalman-filter-controls h4 {
+  margin: 15px 0 10px 0;
+  color: #ccc;
+  font-size: 14px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 5px;
 }
 
-#alpha-acceleration-control {
+#alpha-control,
+#alpha-velocity-control,
+#alpha-acceleration-control,
+#kalman-q-position-control,
+#kalman-q-velocity-control,
+#kalman-q-acceleration-control,
+#kalman-q-wingsuit-control,
+#kalman-r-position-control,
+#kalman-r-velocity-control,
+#kalman-r-acceleration-control {
   margin-bottom: 15px;
 }
 
 #alpha-control label,
 #alpha-velocity-control label,
-#alpha-acceleration-control label {
+#alpha-acceleration-control label,
+#kalman-filter-controls label {
   display: block;
   margin-bottom: 5px;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 #alpha-slider,
 #alpha-velocity-slider,
-#alpha-acceleration-slider {
+#alpha-acceleration-slider,
+#kalman-q-position-slider,
+#kalman-q-velocity-slider,
+#kalman-q-acceleration-slider,
+#kalman-q-wingsuit-slider,
+#kalman-r-position-slider,
+#kalman-r-velocity-slider,
+#kalman-r-acceleration-slider {
   width: 100%;
   margin: 5px 0;
 }

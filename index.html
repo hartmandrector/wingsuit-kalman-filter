@@ -17,18 +17,60 @@
     
     <!-- Controls panel -->
     <div id="controls-panel">
-      <div id="alpha-control">
-        <label for="alpha-slider">Alpha (Position): <span id="alpha-value">0.9</span></label>
-        <input type="range" id="alpha-slider" min="0.01" max="1" step="0.01" value="0.9">
+      <!-- Filter Type Switcher -->
+      <div id="filter-type-control">
+        <label>Filter Type:</label>
+        <div id="filter-switch">
+          <input type="radio" id="motion-estimator" name="filter-type" value="motionestimator" checked>
+          <label for="motion-estimator">Motion Estimator</label>
+          <input type="radio" id="kalman-filter" name="filter-type" value="kalman">
+          <label for="kalman-filter">Kalman Filter</label>
+        </div>
       </div>
-      <div id="alpha-velocity-control">
-        <label for="alpha-velocity-slider">Alpha (Velocity): <span id="alpha-velocity-value">0.9</span></label>
-        <input type="range" id="alpha-velocity-slider" min="0.01" max="1" step="0.01" value="0.9">
+
+      <!-- Motion Estimator Controls -->
+      <div id="motion-estimator-controls">
+        <div id="alpha-control">
+          <label for="alpha-slider">Alpha (Position): <span id="alpha-value">0.90</span></label>
+          <input type="range" id="alpha-slider" min="0.01" max="1" step="0.01" value="0.9">
+        </div>
+        <div id="alpha-velocity-control">
+          <label for="alpha-velocity-slider">Alpha (Velocity): <span id="alpha-velocity-value">0.90</span></label>
+          <input type="range" id="alpha-velocity-slider" min="0.01" max="1" step="0.01" value="0.9">
+        </div>
+        <div id="alpha-acceleration-control">
+          <label for="alpha-acceleration-slider">Alpha (Acceleration): <span id="alpha-acceleration-value">0.90</span></label>
+          <input type="range" id="alpha-acceleration-slider" min="0.01" max="1" step="0.01" value="0.9">
+        </div>
       </div>
-      <div id="alpha-acceleration-control">
-        <label for="alpha-acceleration-slider">Alpha (Acceleration): <span id="alpha-acceleration-value">0.9</span></label>
-        <input type="range" id="alpha-acceleration-slider" min="0.01" max="1" step="0.01" value="0.9">
+
+      <!-- Kalman Filter Controls -->
+      <div id="kalman-filter-controls" style="display: none;">
+        <h4>Process Noise (Q Matrix)</h4>
+        <div id="kalman-q-position-control">
+          <label for="kalman-q-position-slider">Position: <span id="kalman-q-position-value">0.10</span></label>
+          <input type="range" id="kalman-q-position-slider" min="0" max="1" step="0.01" value="0.32">
+        </div>
+        <div id="kalman-q-velocity-control">
+          <label for="kalman-q-velocity-slider">Velocity: <span id="kalman-q-velocity-value">2.00</span></label>
+          <input type="range" id="kalman-q-velocity-slider" min="0" max="1" step="0.01" value="0.57">
+        </div>
+        <div id="kalman-q-acceleration-control">
+          <label for="kalman-q-acceleration-slider">Acceleration: <span id="kalman-q-acceleration-value">10.00</span></label>
+          <input type="range" id="kalman-q-acceleration-slider" min="0" max="1" step="0.01" value="0.89">
+        </div>
+        
+        <h4>Measurement Noise (R Matrix)</h4>
+        <div id="kalman-r-position-control">
+          <label for="kalman-r-position-slider">Position Offset: <span id="kalman-r-position-value">25.00</span></label>
+          <input type="range" id="kalman-r-position-slider" min="-1" max="1" step="0.01" value="1.0">
+        </div>
+        <div id="kalman-r-velocity-control">
+          <label for="kalman-r-velocity-slider">Velocity Offset: <span id="kalman-r-velocity-value">0.64</span></label>
+          <input type="range" id="kalman-r-velocity-slider" min="-1" max="1" step="0.01" value="0.40">
+        </div>
       </div>
+
       <div id="point-info">
         <div id="point-details"></div>
       </div>

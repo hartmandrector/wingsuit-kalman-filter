@@ -1,7 +1,20 @@
 import './style.css'
 import { parseCSV } from './csvParser.js'
 import { plotData } from './plotter.js'
-import { generatePredictedPoints, setAlpha, setAlphaVelocity, setAlphaAcceleration } from './predict.js'
+import { 
+  generatePredictedPoints, 
+  setAlpha, 
+  setAlphaVelocity, 
+  setAlphaAcceleration,
+  setFilterType,
+  getFilterType,
+  setKalmanProcessNoisePosition,
+  setKalmanProcessNoiseVelocity,
+  setKalmanProcessNoiseAcceleration,
+  setKalmanMeasurementNoisePosition,
+  setKalmanMeasurementNoiseVelocity,
+  signedQuadraticScale
+} from './predict.js'
 import { MLocation, PlotSeries } from './types.js'
 
 let currentGpsPoints: MLocation[] = []
@@ -14,7 +27,53 @@ if (dropZone && fileInput) {
   fileInput.addEventListener('change', handleFileSelect)
 }
 
-// Setup alpha sliders
+// Setup filter type switcher
+const motionEstimatorRadio = document.getElementById('motion-estimator') as HTMLInputElement | null
+const kalmanFilterRadio = document.getElementById('kalman-filter') as HTMLInputElement | null
+const motionEstimatorControls = document.getElementById('motion-estimator-controls') as HTMLElement | null
+const kalmanFilterControls = document.getElementById('kalman-filter-controls') as HTMLElement | null
+
+function updateControlsVisibility(): void {
+  const filterType = getFilterType()
+  if (motionEstimatorControls && kalmanFilterControls) {
+    if (filterType === 'motionestimator') {
+      motionEstimatorControls.style.display = 'block'
+      kalmanFilterControls.style.display = 'none'
+    } else {
+      motionEstimatorControls.style.display = 'none'
+      kalmanFilterControls.style.display = 'block'
+    }
+  }
+}
+
+if (motionEstimatorRadio && kalmanFilterRadio) {
+  motionEstimatorRadio.addEventListener('change', () => {
+    if (motionEstimatorRadio.checked) {
+      setFilterType('motionestimator')
+      updateControlsVisibility()
+      if (currentGpsPoints.length > 0) {
+        regeneratePlot()
+      }
+    }
+  })
+
+  kalmanFilterRadio.addEventListener('change', () => {
+    if (kalmanFilterRadio.checked) {
+      setFilterType('kalman')
+      updateControlsVisibility()
+      if (currentGpsPoints.length > 0) {
+        regeneratePlot()
+      }
+    }
+  })
+}
+
+// Helper function for quadratic scaling display
+function quadraticScale(value: number): number {
+  return 0.0001 + (value * value) * (25 - 0.0001)
+}
+
+// Setup alpha sliders (Motion Estimator)
 const alphaSlider = document.getElementById('alpha-slider') as HTMLInputElement | null
 const alphaValue = document.getElementById('alpha-value') as HTMLElement | null
 const alphaVelocitySlider = document.getElementById('alpha-velocity-slider') as HTMLInputElement | null
@@ -29,7 +88,6 @@ if (alphaSlider && alphaValue) {
     alphaValue.textContent = alpha.toFixed(2)
     setAlpha(alpha)
     
-    // Regenerate plot if we have data
     if (currentGpsPoints.length > 0) {
       regeneratePlot()
     }
@@ -43,7 +101,6 @@ if (alphaVelocitySlider && alphaVelocityValue) {
     alphaVelocityValue.textContent = alphaVelocity.toFixed(2)
     setAlphaVelocity(alphaVelocity)
     
-    // Regenerate plot if we have data
     if (currentGpsPoints.length > 0) {
       regeneratePlot()
     }
@@ -57,7 +114,91 @@ if (alphaAccelerationSlider && alphaAccelerationValue) {
     alphaAccelerationValue.textContent = alphaAcceleration.toFixed(2)
     setAlphaAcceleration(alphaAcceleration)
     
-    // Regenerate plot if we have data
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+// Setup Kalman Filter sliders
+// Process Noise (Q Matrix)
+const kalmanQPositionSlider = document.getElementById('kalman-q-position-slider') as HTMLInputElement | null
+const kalmanQPositionValue = document.getElementById('kalman-q-position-value') as HTMLElement | null
+const kalmanQVelocitySlider = document.getElementById('kalman-q-velocity-slider') as HTMLInputElement | null
+const kalmanQVelocityValue = document.getElementById('kalman-q-velocity-value') as HTMLElement | null
+const kalmanQAccelerationSlider = document.getElementById('kalman-q-acceleration-slider') as HTMLInputElement | null
+const kalmanQAccelerationValue = document.getElementById('kalman-q-acceleration-value') as HTMLElement | null
+
+// Measurement Noise (R Matrix)
+const kalmanRPositionSlider = document.getElementById('kalman-r-position-slider') as HTMLInputElement | null
+const kalmanRPositionValue = document.getElementById('kalman-r-position-value') as HTMLElement | null
+const kalmanRVelocitySlider = document.getElementById('kalman-r-velocity-slider') as HTMLInputElement | null
+const kalmanRVelocityValue = document.getElementById('kalman-r-velocity-value') as HTMLElement | null
+
+if (kalmanQPositionSlider && kalmanQPositionValue) {
+  kalmanQPositionSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScale(value)
+    kalmanQPositionValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoisePosition(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanQVelocitySlider && kalmanQVelocityValue) {
+  kalmanQVelocitySlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScale(value)
+    kalmanQVelocityValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoiseVelocity(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanQAccelerationSlider && kalmanQAccelerationValue) {
+  kalmanQAccelerationSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScale(value)
+    kalmanQAccelerationValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoiseAcceleration(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanRPositionSlider && kalmanRPositionValue) {
+  kalmanRPositionSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = signedQuadraticScale(value)
+    kalmanRPositionValue.textContent = scaledValue.toFixed(2)
+    setKalmanMeasurementNoisePosition(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanRVelocitySlider && kalmanRVelocityValue) {
+  kalmanRVelocitySlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = signedQuadraticScale(value)
+    kalmanRVelocityValue.textContent = scaledValue.toFixed(2)
+    setKalmanMeasurementNoiseVelocity(value)
+    
     if (currentGpsPoints.length > 0) {
       regeneratePlot()
     }
@@ -194,6 +335,7 @@ function processCSVData(csv: string): void {
   
   if (controlsPanel) {
     controlsPanel.classList.add('show')
+    updateControlsVisibility()
   }
   
   // Make canvas fullscreen
