@@ -1,7 +1,7 @@
 import './style.css'
 import { parseCSV } from './csvParser.js'
 import { plotData } from './plotter.js'
-import { generatePredictedPoints, setAlpha } from './predict.js'
+import { generatePredictedPoints, setAlpha, setAlphaVelocity, setAlphaAcceleration } from './predict.js'
 import { MLocation, PlotSeries } from './types.js'
 
 let currentGpsPoints: MLocation[] = []
@@ -14,9 +14,13 @@ if (dropZone && fileInput) {
   fileInput.addEventListener('change', handleFileSelect)
 }
 
-// Setup alpha slider
+// Setup alpha sliders
 const alphaSlider = document.getElementById('alpha-slider') as HTMLInputElement | null
 const alphaValue = document.getElementById('alpha-value') as HTMLElement | null
+const alphaVelocitySlider = document.getElementById('alpha-velocity-slider') as HTMLInputElement | null
+const alphaVelocityValue = document.getElementById('alpha-velocity-value') as HTMLElement | null
+const alphaAccelerationSlider = document.getElementById('alpha-acceleration-slider') as HTMLInputElement | null
+const alphaAccelerationValue = document.getElementById('alpha-acceleration-value') as HTMLElement | null
 
 if (alphaSlider && alphaValue) {
   alphaSlider.addEventListener('input', (e) => {
@@ -24,6 +28,34 @@ if (alphaSlider && alphaValue) {
     const alpha = parseFloat(target.value)
     alphaValue.textContent = alpha.toFixed(2)
     setAlpha(alpha)
+    
+    // Regenerate plot if we have data
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (alphaVelocitySlider && alphaVelocityValue) {
+  alphaVelocitySlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const alphaVelocity = parseFloat(target.value)
+    alphaVelocityValue.textContent = alphaVelocity.toFixed(2)
+    setAlphaVelocity(alphaVelocity)
+    
+    // Regenerate plot if we have data
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (alphaAccelerationSlider && alphaAccelerationValue) {
+  alphaAccelerationSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const alphaAcceleration = parseFloat(target.value)
+    alphaAccelerationValue.textContent = alphaAcceleration.toFixed(2)
+    setAlphaAcceleration(alphaAcceleration)
     
     // Regenerate plot if we have data
     if (currentGpsPoints.length > 0) {

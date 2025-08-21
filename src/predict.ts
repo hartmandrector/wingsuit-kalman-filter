@@ -8,8 +8,10 @@ import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from '
 // Which filter to use
 let filterType: 'motionestimator' | 'kalman' = 'motionestimator' // Change to 'kalman' to use Kalman filter
 let currentAlpha = 0.9
+let currentAlphaVelocity = 0.9
+let currentAlphaAcceleration = 0.9
 let estimator = filterType === 'motionestimator'
-  ? new MotionEstimator({ alpha: currentAlpha, estimateVelocity: false })
+  ? new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
   : new KalmanFilter3D()
 
 const refreshRate = 90 // Hz
@@ -17,7 +19,21 @@ const refreshRate = 90 // Hz
 export function setAlpha(alpha: number): void {
   currentAlpha = alpha
   if (filterType === 'motionestimator') {
-    estimator = new MotionEstimator({ alpha: currentAlpha, estimateVelocity: false })
+    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
+  }
+}
+
+export function setAlphaVelocity(alphaVelocity: number): void {
+  currentAlphaVelocity = alphaVelocity
+  if (filterType === 'motionestimator') {
+    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
+  }
+}
+
+export function setAlphaAcceleration(alphaAcceleration: number): void {
+  currentAlphaAcceleration = alphaAcceleration
+  if (filterType === 'motionestimator') {
+    estimator = new MotionEstimator({ alpha: currentAlpha, alphaVelocity: currentAlphaVelocity, alphaAcceleration: currentAlphaAcceleration, estimateVelocity: true })
   }
 }
 

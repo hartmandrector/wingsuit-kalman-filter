@@ -10,6 +10,8 @@ export interface MotionState {
 
 export interface MotionEstimatorOptions {
   alpha?: number
+  alphaVelocity?: number
+  alphaAcceleration?: number
   estimateVelocity?: boolean
 }
 
@@ -22,6 +24,8 @@ export interface MotionEstimatorOptions {
  */
 export class MotionEstimator {
   private alpha: number
+  private alphaVelocity: number
+  private alphaAcceleration: number
   private estimateVelocity: boolean
   private p: Vector3           // metres ENU
   private v: Vector3           // m/s ENU
@@ -38,6 +42,8 @@ export class MotionEstimator {
   constructor(opts?: MotionEstimatorOptions) {
     const alpha = opts && typeof opts.alpha === 'number' ? opts.alpha : 0.1
     this.alpha = alpha
+    this.alphaVelocity = opts && typeof opts.alphaVelocity === 'number' ? opts.alphaVelocity : alpha
+    this.alphaAcceleration = opts && typeof opts.alphaAcceleration === 'number' ? opts.alphaAcceleration : alpha
     this.estimateVelocity = opts?.estimateVelocity ?? false
 
     this.p = vec()           // metres ENU
@@ -101,7 +107,7 @@ export class MotionEstimator {
 
     const vNew = vec(gps.velE, -gps.velD, gps.velN)
     const aRaw = dt > 0 ? div(sub(vNew, this.v), dt) : vec()
-    this.a = add(mul(this.a, 1 - this.alpha), mul(aRaw, this.alpha))
+    this.a = add(mul(this.a, 1 - this.alphaAcceleration), mul(aRaw, this.alphaAcceleration))
 
     const lastPosition = this.gpsToEnu(gps)
 
@@ -113,7 +119,7 @@ export class MotionEstimator {
 
     // use GPS velocity directly or alpha-blend it?
     if (this.estimateVelocity) {
-      this.v = add(mul(this.v, 1 - this.alpha), mul(vNew, this.alpha))
+      this.v = add(mul(this.v, 1 - this.alphaVelocity), mul(vNew, this.alphaVelocity))
     } else {
       this.v = vNew
     }
@@ -158,7 +164,7 @@ export class MotionEstimator {
     const dt = Math.max(0, (tNow - this.lastUpdateMillis) * 1e-3)
     const vNew = vec(vx, vy, vz)
     const aRaw = dt > 0 ? div(sub(vNew, this.v), dt) : vec()
-    this.a = add(mul(this.a, 1 - this.alpha), mul(aRaw, this.alpha))
+    this.a = add(mul(this.a, 1 - this.alphaAcceleration), mul(aRaw, this.alphaAcceleration))
 
     // lastPosition is incoming ENU relative to our first-sample origin
     const lastPosition = this.originEnu
