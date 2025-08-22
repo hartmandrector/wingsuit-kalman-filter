@@ -292,7 +292,32 @@ function regeneratePlot(): void {
     }
   ]
   
-  plotData(series)
+  // Preserve zoom when regenerating from slider changes
+  plotData(series, true)
+}
+
+function initialPlot(): void {
+  if (currentGpsPoints.length === 0) return
+  
+  // Generate initial predicted points
+  const predictedPoints = generatePredictedPoints(currentGpsPoints)
+
+  // Create plot series
+  const series: PlotSeries[] = [
+    {
+      name: 'GPS Points',
+      data: currentGpsPoints,
+      style: { color: '#646cff', radius: 4 }
+    },
+    {
+      name: 'Predicted Points',
+      data: predictedPoints,
+      style: { color: '#ff4444', radius: 2 }
+    }
+  ]
+  
+  // Reset zoom for new data
+  plotData(series, false)
 }
 
 function processCSVData(csv: string): void {
@@ -344,8 +369,8 @@ function processCSVData(csv: string): void {
   canvas.width = window.innerWidth
   canvas.height = window.innerHeight
   
-  // Generate initial plot
-  regeneratePlot()
+  // Generate initial plot (resets zoom)
+  initialPlot()
 }
 
 async function loadDefaultFile(): Promise<void> {

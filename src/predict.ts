@@ -210,6 +210,9 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
   const filteredVelocities: Vector3[] = []
   const filteredTimes: number[] = []
 
+  // Track the next prediction time to maintain even spacing
+  let nextPredictionTime = firstPoint.time + 1000 / refreshRate
+
   for (let index = 0; index < gpsPoints.length; index++) {
     const point = gpsPoints[index]
 
@@ -242,15 +245,17 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
     const nextPoint = gpsPoints[index + 1]
     const endTime = nextPoint ? nextPoint.time : point.time + 2000 // 2 seconds after last GPS
 
-    for (let t = point.time + 10 / refreshRate; t < endTime; t += 1000 / refreshRate) {
-      const predicted = estimator.predictAt(t)
+    // Generate predicted points at even intervals, maintaining spacing across GPS points
+    while (nextPredictionTime < endTime) {
+      const predicted = estimator.predictAt(nextPredictionTime)
       if (predicted) {
         const predLatLon = ENUToLatLngAlt(predicted.position)
         interpolatedPoints.push({
           ...predLatLon,
-          time: t
+          time: nextPredictionTime
         })
       }
+      nextPredictionTime += 1000 / refreshRate
     }
   }
 

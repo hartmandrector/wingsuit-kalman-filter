@@ -15,14 +15,27 @@ let lastMouseX = 0
 let lastMouseY = 0
 let hoveredPoint: PlotPoint | null = null
 
-export function plotData(series: PlotSeries[]): void {
+// Functions to save and restore zoom state
+export function getZoomState() {
+  return { zoom, panX, panY }
+}
+
+export function setZoomState(state: { zoom: number, panX: number, panY: number }) {
+  zoom = state.zoom
+  panX = state.panX
+  panY = state.panY
+}
+
+export function plotData(series: PlotSeries[], preserveZoom: boolean = false): void {
   canvas = document.getElementById('plot-canvas') as HTMLCanvasElement
   ctx = canvas.getContext('2d') ?? undefined
 
-  // Reset zoom state for new data
-  zoom = 1
-  panX = 0
-  panY = 0
+  // Reset zoom state for new data (only if not preserving zoom)
+  if (!preserveZoom) {
+    zoom = 1
+    panX = 0
+    panY = 0
+  }
 
   if (!ctx || !canvas) {
     console.error('Canvas context not available')
