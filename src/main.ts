@@ -498,28 +498,14 @@ function processFile(file: File): void {
 function regeneratePlot(): void {
   if (currentGpsPoints.length === 0) return
   
-  // Generate new predicted points with current alpha
+  // Generate new predicted points with current filter settings
   currentPredictedPoints = generatePredictedPoints(currentGpsPoints)
 
-  // Create plot series
-  // Convert GPS points to PlotPoint format to include smoothed speeds
-  const gpsAsPlotPoints: PlotPoint[] = currentGpsPoints.map(point => ({
-    lat: point.lat,
-    lng: point.lng,
-    alt: point.alt,
-    time: point.time,
-    x: point.x,
-    y: point.y,
-    z: point.z,
-    smoothVelN: point.smoothVelN,
-    smoothVelE: point.smoothVelE,
-    smoothVelD: point.smoothVelD
-  }))
-  
+  // Create plot series using the same format as initialPlot
   const series: PlotSeries[] = [
     {
       name: 'GPS Points',
-      data: gpsAsPlotPoints,
+      data: currentGpsPoints,
       style: { color: '#646cff', radius: 4 }
     },
     {

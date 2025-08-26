@@ -92,10 +92,17 @@ abstract class PlotView {
     const mouseY = e.clientY - rect.top
 
     const worldBefore = this.screenToWorld(mouseX, mouseY)
-    const zoomFactor = e.deltaY < 0 ? 1.2 : 1/1.2
+    
+    // Much more gradual zoom factors for better control
+    const baseZoomFactor = e.deltaY < 0 ? 1.08 : 1/1.08  // Reduced from 1.15 to 1.08
+    // Even gentler zoom at higher zoom levels
+    const adaptiveZoomFactor = this.zoom > 3 ? 
+      (e.deltaY < 0 ? 1.04 : 1/1.04) : baseZoomFactor  // Reduced threshold and factor
+    
     const oldZoom = this.zoom
-    this.zoom *= zoomFactor
-    this.zoom = Math.max(0.1, Math.min(this.zoom, 50))
+    this.zoom *= adaptiveZoomFactor
+    // Increased max zoom limit and more reasonable min zoom
+    this.zoom = Math.max(0.2, Math.min(this.zoom, 100))
     
     const worldAfter = this.screenToWorld(mouseX, mouseY)
     this.panX += (worldBefore.x - worldAfter.x)
@@ -886,18 +893,35 @@ class SpeedComparisonView extends PlotView {
   private maxTime: number = 0
   private minSpeed: number = 0
   private maxSpeed: number = 0
+  private boundsInitialized: boolean = false
+
+  public plotData(series: PlotSeries[], preserveZoom: boolean = false): void {
+    // Call parent plotData first
+    super.plotData(series, preserveZoom)
+    
+    // Reset bounds initialization flag if not preserving zoom
+    if (!preserveZoom) {
+      this.boundsInitialized = false
+    }
+  }
 
   calculateBounds(points: PlotPoint[]): { minTime: number, maxTime: number, minSpeed: number, maxSpeed: number } {
     // For speed comparison, only use GPS data (first series) if available
     const dataToUse = this.allSeries.length > 0 ? this.allSeries[0].data : points
+    // Also include filter data (second series) if available
+    const filterData = this.allSeries.length > 1 ? this.allSeries[1].data : []
     
     if (dataToUse.length === 0) {
       return { minTime: 0, maxTime: 0, minSpeed: 0, maxSpeed: 0 }
     }
 
     const times = dataToUse.filter(p => p.time).map(p => p.time!)
+    const filterTimes = filterData.filter(p => p.time).map(p => p.time!)
+    const allTimes = [...times, ...filterTimes]
+    
     const velocities: number[] = []
     const smoothVelocities: number[] = []
+    const filterVelocities: number[] = []
 
     dataToUse.forEach(point => {
       const mlocation = point as any
@@ -923,11 +947,31 @@ class SpeedComparisonView extends PlotView {
       if (smoothVel !== undefined) smoothVelocities.push(smoothVel)
     })
 
-    const allSpeeds = [...velocities, ...smoothVelocities]
+    // Extract filter velocities
+    filterData.forEach(point => {
+      const mlocation = point as any
+      let filterVel: number | undefined
+
+      switch (this.selectedComponent) {
+        case 'vn':
+          filterVel = mlocation.velZ // North = ENU Z
+          break
+        case 've':
+          filterVel = mlocation.velX // East = ENU X
+          break
+        case 'vd':
+          filterVel = mlocation.velY ? -mlocation.velY : undefined // Down = -ENU Y
+          break
+      }
+
+      if (filterVel !== undefined) filterVelocities.push(filterVel)
+    })
+
+    const allSpeeds = [...velocities, ...smoothVelocities, ...filterVelocities]
     
     return {
-      minTime: Math.min(...times),
-      maxTime: Math.max(...times),
+      minTime: allTimes.length > 0 ? Math.min(...allTimes) : 0,
+      maxTime: allTimes.length > 0 ? Math.max(...allTimes) : 0,
       minSpeed: allSpeeds.length > 0 ? Math.min(...allSpeeds) : 0,
       maxSpeed: allSpeeds.length > 0 ? Math.max(...allSpeeds) : 0
     }
@@ -1023,10 +1067,17 @@ class SpeedComparisonView extends PlotView {
     const mouseY = e.clientY - rect.top
 
     const worldBefore = this.screenToWorld(mouseX, mouseY)
-    const zoomFactor = e.deltaY < 0 ? 1.2 : 1/1.2
+    
+    // Much more gradual zoom factors for better control
+    const baseZoomFactor = e.deltaY < 0 ? 1.08 : 1/1.08  // Reduced from 1.15 to 1.08
+    // Even gentler zoom at higher zoom levels
+    const adaptiveZoomFactor = this.zoom > 3 ? 
+      (e.deltaY < 0 ? 1.04 : 1/1.04) : baseZoomFactor  // Reduced threshold and factor
+    
     const oldZoom = this.zoom
-    this.zoom *= zoomFactor
-    this.zoom = Math.max(0.1, Math.min(this.zoom, 50))
+    this.zoom *= adaptiveZoomFactor
+    // Increased max zoom limit and more reasonable min zoom
+    this.zoom = Math.max(0.2, Math.min(this.zoom, 100))
     
     const worldAfter = this.screenToWorld(mouseX, mouseY)
     this.panX += (worldBefore.time - worldAfter.time)
@@ -1077,17 +1128,21 @@ class SpeedComparisonView extends PlotView {
     const plotWidth = this.canvas.width - 2 * margin
     const plotHeight = this.canvas.height - 2 * margin
 
-    // Calculate bounds
-    const bounds = this.calculateBounds(this.allPoints)
-    this.minTime = bounds.minTime
-    this.maxTime = bounds.maxTime
-    this.minSpeed = bounds.minSpeed
-    this.maxSpeed = bounds.maxSpeed
+    // Only recalculate bounds if not initialized yet (preserves zoom)
+    if (!this.boundsInitialized) {
+      const bounds = this.calculateBounds(this.allPoints)
+      this.minTime = bounds.minTime
+      this.maxTime = bounds.maxTime
+      this.minSpeed = bounds.minSpeed
+      this.maxSpeed = bounds.maxSpeed
 
-    // Add some padding to speed range
-    const speedPadding = (this.maxSpeed - this.minSpeed) * 0.1
-    this.minSpeed -= speedPadding
-    this.maxSpeed += speedPadding
+      // Add some padding to speed range
+      const speedPadding = (this.maxSpeed - this.minSpeed) * 0.1
+      this.minSpeed -= speedPadding
+      this.maxSpeed += speedPadding
+      
+      this.boundsInitialized = true
+    }
 
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
@@ -1186,6 +1241,8 @@ class SpeedComparisonView extends PlotView {
 
     // Only use GPS data (first series) for speed comparison
     const gpsData = this.allSeries[0].data
+    // Use filter output data (second series) if available
+    const filterData = this.allSeries.length > 1 ? this.allSeries[1].data : []
 
     // Calculate current view bounds with zoom and pan
     const viewTimeRange = this.getViewWidth()
@@ -1280,6 +1337,50 @@ class SpeedComparisonView extends PlotView {
     }
     this.ctx.stroke()
 
+    // Draw filter output velocities as green line
+    if (filterData.length > 0) {
+      this.ctx.strokeStyle = '#00ff44'
+      this.ctx.lineWidth = 2
+      this.ctx.beginPath()
+      
+      firstPoint = true
+      for (const point of filterData) {
+        if (!point.time) continue
+        
+        const mlocation = point as any
+        let filterVelocity: number | undefined
+        switch (this.selectedComponent) {
+          case 'vn':
+            // For filter output, velocities are in ENU coordinates
+            filterVelocity = mlocation.velZ // North = ENU Z
+            break
+          case 've':
+            filterVelocity = mlocation.velX // East = ENU X
+            break
+          case 'vd':
+            filterVelocity = mlocation.velY ? -mlocation.velY : undefined // Down = -ENU Y
+            break
+        }
+        
+        if (filterVelocity === undefined) continue
+        
+        // Only draw points within the current view
+        if (point.time < minViewTime || point.time > maxViewTime || 
+            filterVelocity < minViewSpeed || filterVelocity > maxViewSpeed) continue
+        
+        const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+        const y = margin + plotHeight - ((filterVelocity - minViewSpeed) / viewSpeedRange) * plotHeight
+        
+        if (firstPoint) {
+          this.ctx.moveTo(x, y)
+          firstPoint = false
+        } else {
+          this.ctx.lineTo(x, y)
+        }
+      }
+      this.ctx.stroke()
+    }
+
     // Draw legend
     this.ctx.fillStyle = '#fff'
     this.ctx.font = '12px system-ui'
@@ -1301,6 +1402,15 @@ class SpeedComparisonView extends PlotView {
     this.ctx.fillRect(10, yOffset - 8, 15, 3)
     this.ctx.fillStyle = '#fff'
     this.ctx.fillText(`Smoothed ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+    yOffset += 20
+    
+    // Filter output velocity legend (only show if filter data exists)
+    if (filterData.length > 0) {
+      this.ctx.fillStyle = '#00ff44'
+      this.ctx.fillRect(10, yOffset - 8, 15, 3)
+      this.ctx.fillStyle = '#fff'
+      this.ctx.fillText(`Filter ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+    }
   }
 }
 
@@ -1369,25 +1479,30 @@ export function plotData(series: PlotSeries[], preserveZoom: boolean = false): v
     app.classList.add('hidden')
     quadViewContainer.classList.add('show')
     
-    // Resize canvases to fit their containers - three column layout
+    // Only resize canvases if they haven't been properly sized yet (to avoid disrupting zoom)
     const topCanvas = document.getElementById('top-canvas') as HTMLCanvasElement
     const profileCanvas = document.getElementById('profile-canvas') as HTMLCanvasElement
     const polarCanvas = document.getElementById('polar-canvas') as HTMLCanvasElement
     const accelerationCanvas = document.getElementById('acceleration-canvas') as HTMLCanvasElement
     
     if (topCanvas && profileCanvas && polarCanvas && accelerationCanvas) {
-      // Each chart column gets about 40% of screen width (leaving 20% for controls)
-      const containerWidth = window.innerWidth * 0.4
-      const containerHeight = window.innerHeight / 2
+      // Only resize if canvas is still default size or if this is the initial load
+      const shouldResize = !preserveZoom || topCanvas.width <= 300
       
-      topCanvas.width = containerWidth
-      topCanvas.height = containerHeight
-      profileCanvas.width = containerWidth
-      profileCanvas.height = containerHeight
-      polarCanvas.width = containerWidth
-      polarCanvas.height = containerHeight
-      accelerationCanvas.width = containerWidth
-      accelerationCanvas.height = containerHeight
+      if (shouldResize) {
+        // Each chart column gets about 40% of screen width (leaving 20% for controls)
+        const containerWidth = window.innerWidth * 0.4
+        const containerHeight = window.innerHeight / 2
+        
+        topCanvas.width = containerWidth
+        topCanvas.height = containerHeight
+        profileCanvas.width = containerWidth
+        profileCanvas.height = containerHeight
+        polarCanvas.width = containerWidth
+        polarCanvas.height = containerHeight
+        accelerationCanvas.width = containerWidth
+        accelerationCanvas.height = containerHeight
+      }
     }
   }
 

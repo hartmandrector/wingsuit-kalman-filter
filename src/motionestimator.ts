@@ -204,7 +204,7 @@ export class MotionEstimator {
     
     // 3. Calculate wingsuit acceleration using predicted velocity and stored parameters
     const [aWSE_x, aWSE_y, aWSE_z] = this.calculateWingsuitAcceleration(
-      vPredicted.z, -vPredicted.y, vPredicted.x, 
+      vPredicted.z, vPredicted.x, -vPredicted.y,
       this.kl, this.kd, this.roll
     )
     const aWSE = vec(aWSE_x, aWSE_y, aWSE_z)
@@ -291,7 +291,7 @@ export class MotionEstimator {
     
     // 3. Calculate wingsuit acceleration using predicted velocity and stored parameters
     const [aWSE_x, aWSE_y, aWSE_z] = this.calculateWingsuitAcceleration(
-      vPredicted.z, -vPredicted.y, vPredicted.x, 
+      vPredicted.z, vPredicted.x, -vPredicted.y,
       this.kl, this.kd, this.roll
     )
     const aWSE = vec(aWSE_x, aWSE_y, aWSE_z)
