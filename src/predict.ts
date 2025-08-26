@@ -296,6 +296,13 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
           accelX: predicted.acceleration.x,
           accelY: predicted.acceleration.y,
           accelZ: predicted.acceleration.z,
+          // Store additional acceleration vectors for analysis
+          aMeasuredX: predicted.aMeasured?.x,
+          aMeasuredY: predicted.aMeasured?.y,
+          aMeasuredZ: predicted.aMeasured?.z,
+          aWSEX: predicted.aWSE?.x,
+          aWSEY: predicted.aWSE?.y,
+          aWSEZ: predicted.aWSE?.z,
           kl: predicted.kl,
           kd: predicted.kd,
           roll: predicted.roll,

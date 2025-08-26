@@ -6,6 +6,9 @@ export interface MotionState {
   position: Vector3
   velocity: Vector3
   acceleration: Vector3
+  // Additional acceleration components for analysis
+  aMeasured?: Vector3
+  aWSE?: Vector3
 }
 
 export interface MotionEstimatorOptions {
@@ -30,6 +33,8 @@ export class MotionEstimator {
   private p: Vector3           // metres ENU
   private v: Vector3           // m/s ENU
   private a: Vector3           // m/s^2 ENU
+  private aMeasured: Vector3   // measured acceleration (m/s^2 ENU)
+  private aWSE: Vector3        // wingsuit model acceleration (m/s^2 ENU)
   private positionDelta: Vector3  // p - lastPosition (ENU)
   private lastUpdateMillis: number | undefined
 
@@ -54,6 +59,8 @@ export class MotionEstimator {
     this.p = vec()           // metres ENU
     this.v = vec()           // m/s ENU
     this.a = vec()           // m/s^2 ENU
+    this.aMeasured = vec()   // measured acceleration (m/s^2 ENU)
+    this.aWSE = vec()        // wingsuit model acceleration (m/s^2 ENU)
 
     this.positionDelta = vec()  // p - lastPosition (ENU)
     this.lastUpdateMillis = undefined
@@ -184,6 +191,8 @@ export class MotionEstimator {
       this.p = vec()              // new origin = (0,0,0)
       this.v = vec(gps.velE, -gps.velD, gps.velN)
       this.a = vec()
+      this.aMeasured = vec()
+      this.aWSE = vec()
       this.positionDelta = vec()
       this.lastUpdateMillis = tNow
       return
@@ -198,6 +207,7 @@ export class MotionEstimator {
 
     // 1. Calculate acceleration from GPS velocity change (inferred, not measured)
     const aMeasured = div(sub(vMeasured, this.v), dt)
+    this.aMeasured = aMeasured  // Store for plotting
     
     // 2. Calculate predicted velocity for wingsuit acceleration
     const vPredicted = add(this.v, mul(this.a, dt))
@@ -208,11 +218,15 @@ export class MotionEstimator {
       this.kl, this.kd, this.roll
     )
     const aWSE = vec(aWSE_x, aWSE_y, aWSE_z)
+    this.aWSE = aWSE  // Store for plotting
     
     // 4. Complementary filter for acceleration using wingsuit prediction
     const aOld = this.a
     this.a = add(mul(aWSE, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
-
+  // log aMeasured and aWSE
+    console.log('aMeasured:', aMeasured)
+    console.log('aWSE:', aWSE)
+    console.log("astate:", this.a)
     // 5. Predict current state using trapezoidal rule from last state
     // Trapezoidal rule for velocity: v_pred = v + (a_old + a_new) * dt / 2
     const vPredictedFinal = add(this.v, mul(add(aOld, this.a), dt / 2))
@@ -271,6 +285,8 @@ export class MotionEstimator {
       this.p = vec()
       this.v = vec(vx, vy, vz)
       this.a = vec()
+      this.aMeasured = vec()
+      this.aWSE = vec()
       this.positionDelta = vec()
       this.lastUpdateMillis = tNow
       return
@@ -285,6 +301,7 @@ export class MotionEstimator {
 
     // 1. Calculate acceleration from velocity change (inferred from GPS velocity)
     const aMeasured = div(sub(vMeasured, this.v), dt)
+    this.aMeasured = aMeasured  // Store for plotting
     
     // 2. Calculate predicted velocity for wingsuit acceleration
     const vPredicted = add(this.v, mul(this.a, dt))
@@ -295,7 +312,8 @@ export class MotionEstimator {
       this.kl, this.kd, this.roll
     )
     const aWSE = vec(aWSE_x, aWSE_y, aWSE_z)
-    
+    this.aWSE = aWSE  // Store for plotting
+   
     // 4. Complementary filter for acceleration using wingsuit prediction
     const aOld = this.a
     this.a = add(mul(aWSE, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
@@ -358,6 +376,8 @@ export class MotionEstimator {
       position: pos,
       velocity: vel,
       acceleration: this.a,
+      aMeasured: this.aMeasured,
+      aWSE: this.aWSE,
       kl: this.kl,
       kd: this.kd,
       roll: this.roll
@@ -373,6 +393,8 @@ export class MotionEstimator {
       position: this.p,
       velocity: this.v,
       acceleration: this.a,
+      aMeasured: this.aMeasured,
+      aWSE: this.aWSE,
       kl: this.kl,
       kd: this.kd,
       roll: this.roll
@@ -386,6 +408,8 @@ export class MotionEstimator {
     this.p = vec()
     this.v = vec()
     this.a = vec()
+    this.aMeasured = vec()
+    this.aWSE = vec()
     this.positionDelta = vec()
     this.lastUpdateMillis = undefined
     this.originGps = undefined

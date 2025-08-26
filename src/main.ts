@@ -651,7 +651,7 @@ function setupSpeedSelector() {
   const selector = document.getElementById('speed-component-selector') as HTMLSelectElement
   if (selector) {
     selector.addEventListener('change', () => {
-      const selectedComponent = selector.value as 'vn' | 've' | 'vd'
+      const selectedComponent = selector.value as 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad'
       speedComparisonView.setSelectedComponent(selectedComponent)
     })
   }

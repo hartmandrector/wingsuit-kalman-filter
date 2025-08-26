@@ -33,9 +33,16 @@ export interface PlotPoint {
   velY?: number  // Up velocity  
   velZ?: number  // North velocity
   // ENU acceleration components (m/s²)
-  accelX?: number  // East acceleration
-  accelY?: number  // Up acceleration
-  accelZ?: number  // North acceleration
+  accelX?: number  // East acceleration (state/filtered)
+  accelY?: number  // Up acceleration (state/filtered)
+  accelZ?: number  // North acceleration (state/filtered)
+  // Additional acceleration vectors for analysis
+  aMeasuredX?: number  // Measured acceleration East (m/s²)
+  aMeasuredY?: number  // Measured acceleration Up (m/s²)
+  aMeasuredZ?: number  // Measured acceleration North (m/s²)
+  aWSEX?: number      // Wingsuit model acceleration East (m/s²)
+  aWSEY?: number      // Wingsuit model acceleration Up (m/s²)
+  aWSEZ?: number      // Wingsuit model acceleration North (m/s²)
   // Optional wingsuit parameters for hover display
   kl?: number
   kd?: number

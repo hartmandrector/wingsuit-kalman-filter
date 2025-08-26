@@ -22,6 +22,10 @@ export class KalmanFilter3D {
   private lastUpdateTime: number | undefined
   private originGps: MLocation | undefined
   
+  // Store acceleration components for plotting
+  private aMeasured: Vector3 = { x: 0, y: 0, z: 0 }
+  private aWSE: Vector3 = { x: 0, y: 0, z: 0 }
+  
   // Measurement noise offsets for user control
   private measurementNoiseOffsets = {
     position: 0,
@@ -272,6 +276,14 @@ export class KalmanFilter3D {
         measuredAz = (vz - this.state[5]) / dt
       }
     }
+    
+    // Store measured acceleration for plotting
+    this.aMeasured = { x: measuredAx, y: measuredAy, z: measuredAz }
+    
+    // Calculate and store WSE acceleration for plotting
+    const kl = this.state[9], kd = this.state[10], roll = this.state[11]
+    const [aWSE_x, aWSE_y, aWSE_z] = this.calculateWingsuitAcceleration(vz, -vy, vx, kl, kd, roll)
+    this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
 
     // Update wingsuit parameters from kalman acceleration,
     const [ae_kalman, ad_kalman, an_kalman] = [this.state[6], -this.state[7], this.state[8]]
@@ -380,6 +392,8 @@ export class KalmanFilter3D {
       position: { x: this.state[0], y: this.state[1], z: this.state[2] },
       velocity: { x: this.state[3], y: this.state[4], z: this.state[5] },
       acceleration: { x: this.state[6], y: this.state[7], z: this.state[8] },
+      aMeasured: this.aMeasured,
+      aWSE: this.aWSE,
       kl: this.state[9],
       kd: this.state[10],
       roll: this.state[11]
@@ -399,6 +413,8 @@ export class KalmanFilter3D {
       position: { x: sstate[0], y: sstate[1], z: sstate[2] },
       velocity: { x: sstate[3], y: sstate[4], z: sstate[5] },
       acceleration: { x: sstate[6], y: sstate[7], z: sstate[8] },
+      aMeasured: this.aMeasured,
+      aWSE: this.aWSE,
       kl: sstate[9],
       kd: sstate[10],
       roll: sstate[11]

@@ -15,7 +15,7 @@ describe('KalmanFilter3D', () => {
     it('should update state with first measurement', () => {
       const kalman = new KalmanFilter3D()
       const timestamp = Date.now()
-      kalman.updateWithEnu(10, 5, 20, 0, 0, 0, timestamp)
+      kalman.updateWithEnu(10, 5, 20, 0, 0, 0, 1.0, 1.0, 1.0, timestamp)
       
       const state = kalman.getState()
       // With velocity measurements, should be more accurate than before
@@ -32,8 +32,8 @@ describe('KalmanFilter3D', () => {
       const timestamp = Date.now()
       
       // First update to establish initial state
-      kalman.updateWithEnu(0, 0, 0, 0, 0, 0, timestamp)
-      kalman.updateWithEnu(10, 0, 0, 10, 0, 0, timestamp + 1000) // Moving east at ~10 m/s
+      kalman.updateWithEnu(0, 0, 0, 0, 0, 0, 1.0, 1.0, 1.0, timestamp)
+      kalman.updateWithEnu(10, 0, 0, 10, 0, 0, 1.0, 1.0, 1.0, timestamp + 1000) // Moving east at ~10 m/s
       
       // Predict 1 second into the future
       const predicted = kalman.predictAt(timestamp + 2000)
@@ -55,7 +55,7 @@ describe('KalmanFilter3D', () => {
     it('should return current state for prediction at same time', () => {
       const kalman = new KalmanFilter3D()
       const timestamp = Date.now()
-      kalman.updateWithEnu(10, 5, 20, 0, 0, 0, timestamp)
+      kalman.updateWithEnu(10, 5, 20, 0, 0, 0, 1.0, 1.0, 1.0, timestamp)
       
       const predicted = kalman.predictAt(timestamp)
       const current = kalman.getState()
@@ -70,9 +70,9 @@ describe('KalmanFilter3D', () => {
       const timestamp = Date.now()
       
       // Create a scenario with acceleration
-      kalman.updateWithEnu(0, 0, 0, 0, 0, 0, timestamp)
-      kalman.updateWithEnu(1, 0, 0, 1, 0, 0, timestamp + 1000) // 1 m/s velocity
-      kalman.updateWithEnu(4, 0, 0, 3, 0, 0, timestamp + 2000) // 3 m/s velocity (2 m/s^2 acceleration)
+      kalman.updateWithEnu(0, 0, 0, 0, 0, 0, 1.0, 1.0, 1.0, timestamp)
+      kalman.updateWithEnu(1, 0, 0, 1, 0, 0, 1.0, 1.0, 1.0, timestamp + 1000) // 1 m/s velocity
+      kalman.updateWithEnu(4, 0, 0, 3, 0, 0, 1.0, 1.0, 1.0, timestamp + 2000) // 3 m/s velocity (2 m/s^2 acceleration)
       
       // Predict 1 second into future
       const predicted = kalman.predictAt(timestamp + 3000)
@@ -95,7 +95,7 @@ describe('KalmanFilter3D', () => {
         { x: 30.2, y: 0.15, z: -0.05, t: timestamp + 3000 }
       ]
       
-      measurements.forEach(m => kalman.updateWithEnu(m.x, m.y, m.z, 10, 0, 0, m.t))
+      measurements.forEach(m => kalman.updateWithEnu(m.x, m.y, m.z, 10, 0, 0, 1.0, 1.0, 1.0, m.t))
       
       const state = kalman.getState()
       

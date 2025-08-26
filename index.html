@@ -42,11 +42,14 @@
         <div id="speed-comparison-view-container">
           <h3>Speed Comparison Chart</h3>
           <div id="speed-selector-container">
-            <label for="speed-component-selector">Velocity Component:</label>
+            <label for="speed-component-selector">Component:</label>
             <select id="speed-component-selector">
-              <option value="vn" selected>VN (North)</option>
-              <option value="ve">VE (East)</option>
-              <option value="vd">VD (Down)</option>
+              <option value="vn" selected>VN (North Velocity)</option>
+              <option value="ve">VE (East Velocity)</option>
+              <option value="vd">VD (Down Velocity)</option>
+              <option value="an">AN (North Acceleration)</option>
+              <option value="ae">AE (East Acceleration)</option>
+              <option value="ad">AD (Down Acceleration)</option>
             </select>
           </div>
           <canvas id="speed-comparison-canvas" width="800" height="600"></canvas>

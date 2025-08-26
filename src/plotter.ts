@@ -761,10 +761,10 @@ class PolarView extends PlotView {
     this.ctx.fillStyle = '#0099ff'
     let smoothedSpeedCount = 0
     
-    console.log('Drawing smoothed speeds, total series:', this.allSeries.length)
+    //console.log('Drawing smoothed speeds, total series:', this.allSeries.length)
     
     for (const plotSeries of this.allSeries) {
-      console.log(`Checking series: ${plotSeries.name}, points: ${plotSeries.data.length}`)
+      //console.log(`Checking series: ${plotSeries.name}, points: ${plotSeries.data.length}`)
       for (const point of plotSeries.data) {
         const smoothedPos = this.getSmoothedSpeedScreenCoords(point)
         
@@ -773,12 +773,12 @@ class PolarView extends PlotView {
             smoothedPos.y >= margin && smoothedPos.y <= margin + plotHeight) {
           
           smoothedSpeedCount++
-          if (smoothedSpeedCount <= 5) { // Log first few
-            console.log(`Drawing smoothed speed point ${smoothedSpeedCount}:`, {
-              originalSpeeds: { velN: point.smoothVelN, velE: point.smoothVelE, velD: point.smoothVelD },
-              screenPos: smoothedPos
-            })
-          }
+         // if (smoothedSpeedCount <= 5) { // Log first few
+            //console.log(`Drawing smoothed speed point ${smoothedSpeedCount}:`, {
+           //   originalSpeeds: { velN: point.smoothVelN, velE: point.smoothVelE, velD: point.smoothVelD },
+            //  screenPos: smoothedPos
+           // })
+          //}
           
           this.ctx.beginPath()
           
@@ -798,7 +798,7 @@ class PolarView extends PlotView {
       }
     }
     
-    console.log('Total smoothed speed points drawn:', smoothedSpeedCount)
+    //console.log('Total smoothed speed points drawn:', smoothedSpeedCount)
 
     // Draw legend and info
     this.ctx.fillStyle = '#fff'
@@ -888,7 +888,7 @@ class PolarView extends PlotView {
 
 // Speed Comparison Chart View - shows velocity components over time
 class SpeedComparisonView extends PlotView {
-  private selectedComponent: 'vn' | 've' | 'vd' = 'vn'
+  private selectedComponent: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' = 'vn'
   private minTime: number = 0
   private maxTime: number = 0
   private minSpeed: number = 0
@@ -941,6 +941,13 @@ class SpeedComparisonView extends PlotView {
           vel = mlocation.velD
           smoothVel = mlocation.smoothVelD
           break
+        case 'an':
+        case 'ae':
+        case 'ad':
+          // Acceleration components are only available in filter data, not GPS data
+          vel = undefined
+          smoothVel = undefined
+          break
       }
 
       if (vel !== undefined) velocities.push(vel)
@@ -961,6 +968,15 @@ class SpeedComparisonView extends PlotView {
           break
         case 'vd':
           filterVel = mlocation.velY ? -mlocation.velY : undefined // Down = -ENU Y
+          break
+        case 'an':
+          filterVel = mlocation.accelZ // North acceleration = ENU Z (state)
+          break
+        case 'ae':
+          filterVel = mlocation.accelX // East acceleration = ENU X (state)
+          break
+        case 'ad':
+          filterVel = mlocation.accelY ? -mlocation.accelY : undefined // Down acceleration = -ENU Y (state)
           break
       }
 
@@ -1053,7 +1069,7 @@ class SpeedComparisonView extends PlotView {
     return { x, y }
   }
 
-  setSelectedComponent(component: 'vn' | 've' | 'vd') {
+  setSelectedComponent(component: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad') {
     this.selectedComponent = component
     this.renderPlot()
   }
@@ -1229,10 +1245,14 @@ class SpeedComparisonView extends PlotView {
     
     // Y-axis label (rotated)
     const componentName = this.selectedComponent.toUpperCase()
+    const isAcceleration = this.selectedComponent.startsWith('a')
+    const units = isAcceleration ? '(m/s²)' : '(m/s)'
+    const label = isAcceleration ? `${componentName} Acceleration ${units}` : `${componentName} Speed ${units}`
+    
     this.ctx.save()
     this.ctx.translate(15, margin + plotHeight / 2)
     this.ctx.rotate(-Math.PI / 2)
-    this.ctx.fillText(`${componentName} Speed (m/s)`, 0, 0)
+    this.ctx.fillText(label, 0, 0)
     this.ctx.restore()
   }
 
@@ -1276,6 +1296,12 @@ class SpeedComparisonView extends PlotView {
         case 'vd':
           velocity = mlocation.velD
           break
+        case 'an':
+        case 'ae':
+        case 'ad':
+          // Skip GPS acceleration (not available in GPS data)
+          velocity = undefined
+          break
       }
       
       if (velocity === undefined) continue
@@ -1317,6 +1343,11 @@ class SpeedComparisonView extends PlotView {
         case 'vd':
           smoothVelocity = mlocation.smoothVelD
           break
+        case 'an':
+        case 'ae':
+        case 'ad':
+          // No acceleration data in smoothed GPS, skip
+          continue
       }
       
       if (smoothVelocity === undefined) continue
@@ -1348,28 +1379,38 @@ class SpeedComparisonView extends PlotView {
         if (!point.time) continue
         
         const mlocation = point as any
-        let filterVelocity: number | undefined
+        let filterValue: number | undefined
         switch (this.selectedComponent) {
           case 'vn':
             // For filter output, velocities are in ENU coordinates
-            filterVelocity = mlocation.velZ // North = ENU Z
+            filterValue = mlocation.velZ // North = ENU Z
             break
           case 've':
-            filterVelocity = mlocation.velX // East = ENU X
+            filterValue = mlocation.velX // East = ENU X
             break
           case 'vd':
-            filterVelocity = mlocation.velY ? -mlocation.velY : undefined // Down = -ENU Y
+            filterValue = mlocation.velY ? -mlocation.velY : undefined // Down = -ENU Y
+            break
+          case 'an':
+            // For filter output, accelerations are in ENU coordinates (state)
+            filterValue = mlocation.accelZ // North = ENU Z
+            break
+          case 'ae':
+            filterValue = mlocation.accelX // East = ENU X
+            break
+          case 'ad':
+            filterValue = mlocation.accelY ? -mlocation.accelY : undefined // Down = -ENU Y
             break
         }
         
-        if (filterVelocity === undefined) continue
+        if (filterValue === undefined) continue
         
         // Only draw points within the current view
         if (point.time < minViewTime || point.time > maxViewTime || 
-            filterVelocity < minViewSpeed || filterVelocity > maxViewSpeed) continue
+            filterValue < minViewSpeed || filterValue > maxViewSpeed) continue
         
         const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
-        const y = margin + plotHeight - ((filterVelocity - minViewSpeed) / viewSpeedRange) * plotHeight
+        const y = margin + plotHeight - ((filterValue - minViewSpeed) / viewSpeedRange) * plotHeight
         
         if (firstPoint) {
           this.ctx.moveTo(x, y)
@@ -1379,6 +1420,89 @@ class SpeedComparisonView extends PlotView {
         }
       }
       this.ctx.stroke()
+      
+      // If acceleration is selected, draw additional lines for measured and WSE acceleration
+      if (this.selectedComponent.startsWith('a')) {
+        // Draw measured acceleration as red line
+        this.ctx.strokeStyle = '#ff4444'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        
+        firstPoint = true
+        for (const point of filterData) {
+          if (!point.time) continue
+          
+          const mlocation = point as any
+          let measuredAccel: number | undefined
+          switch (this.selectedComponent) {
+            case 'an':
+              measuredAccel = mlocation.aMeasuredZ
+              break
+            case 'ae':
+              measuredAccel = mlocation.aMeasuredX
+              break
+            case 'ad':
+              measuredAccel = mlocation.aMeasuredY ? -mlocation.aMeasuredY : undefined
+              break
+          }
+          
+          if (measuredAccel === undefined) continue
+          
+          if (point.time < minViewTime || point.time > maxViewTime || 
+              measuredAccel < minViewSpeed || measuredAccel > maxViewSpeed) continue
+          
+          const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+          const y = margin + plotHeight - ((measuredAccel - minViewSpeed) / viewSpeedRange) * plotHeight
+          
+          if (firstPoint) {
+            this.ctx.moveTo(x, y)
+            firstPoint = false
+          } else {
+            this.ctx.lineTo(x, y)
+          }
+        }
+        this.ctx.stroke()
+        
+        // Draw WSE acceleration as blue line
+        this.ctx.strokeStyle = '#0099ff'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        
+        firstPoint = true
+        for (const point of filterData) {
+          if (!point.time) continue
+          
+          const mlocation = point as any
+          let wseAccel: number | undefined
+          switch (this.selectedComponent) {
+            case 'an':
+              wseAccel = mlocation.aWSEZ
+              break
+            case 'ae':
+              wseAccel = mlocation.aWSEX
+              break
+            case 'ad':
+              wseAccel = mlocation.aWSEY ? -mlocation.aWSEY : undefined
+              break
+          }
+          
+          if (wseAccel === undefined) continue
+          
+          if (point.time < minViewTime || point.time > maxViewTime || 
+              wseAccel < minViewSpeed || wseAccel > maxViewSpeed) continue
+          
+          const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+          const y = margin + plotHeight - ((wseAccel - minViewSpeed) / viewSpeedRange) * plotHeight
+          
+          if (firstPoint) {
+            this.ctx.moveTo(x, y)
+            firstPoint = false
+          } else {
+            this.ctx.lineTo(x, y)
+          }
+        }
+        this.ctx.stroke()
+      }
     }
 
     // Draw legend
@@ -1389,27 +1513,46 @@ class SpeedComparisonView extends PlotView {
     let yOffset = 20
     this.ctx.fillText(`${this.selectedComponent.toUpperCase()} Speed Comparison`, 10, yOffset)
     yOffset += 20
+    const isAccel = this.selectedComponent.startsWith('a')
+    const dataType = isAccel ? 'Accel' : 'Velocity'
     
-    // Original velocity legend
-    this.ctx.fillStyle = '#ff4444'
-    this.ctx.fillRect(10, yOffset - 8, 15, 3)
-    this.ctx.fillStyle = '#fff'
-    this.ctx.fillText(`Original ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
-    yOffset += 20
+    // Original velocity legend (only for velocity components)
+    if (!isAccel) {
+      this.ctx.fillStyle = '#ff4444'
+      this.ctx.fillRect(10, yOffset - 8, 15, 3)
+      this.ctx.fillStyle = '#fff'
+      this.ctx.fillText(`Original ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+      yOffset += 20
+      
+      // Smoothed velocity legend
+      this.ctx.fillStyle = '#0099ff'
+      this.ctx.fillRect(10, yOffset - 8, 15, 3)
+      this.ctx.fillStyle = '#fff'
+      this.ctx.fillText(`Smoothed ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+      yOffset += 20
+    }
     
-    // Smoothed velocity legend
-    this.ctx.fillStyle = '#0099ff'
-    this.ctx.fillRect(10, yOffset - 8, 15, 3)
-    this.ctx.fillStyle = '#fff'
-    this.ctx.fillText(`Smoothed ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
-    yOffset += 20
-    
-    // Filter output velocity legend (only show if filter data exists)
+    // Filter output legend (velocity or acceleration)
     if (filterData.length > 0) {
       this.ctx.fillStyle = '#00ff44'
       this.ctx.fillRect(10, yOffset - 8, 15, 3)
       this.ctx.fillStyle = '#fff'
-      this.ctx.fillText(`Filter ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+      this.ctx.fillText(`State ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+      yOffset += 20
+      
+      // For acceleration, show additional legend entries for measured and WSE
+      if (isAccel) {
+        this.ctx.fillStyle = '#ff4444'
+        this.ctx.fillRect(10, yOffset - 8, 15, 3)
+        this.ctx.fillStyle = '#fff'
+        this.ctx.fillText(`Measured ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+        yOffset += 20
+        
+        this.ctx.fillStyle = '#0099ff'
+        this.ctx.fillRect(10, yOffset - 8, 15, 3)
+        this.ctx.fillStyle = '#fff'
+        this.ctx.fillText(`WSE ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+      }
     }
   }
 }
