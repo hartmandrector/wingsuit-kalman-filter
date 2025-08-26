@@ -603,12 +603,12 @@ function processCSVData(csv: string): void {
 
   // Calculate smoothed GPS speeds (computed once when CSV is loaded)
   console.log('Calculating smoothed GPS speeds...')
-  smoothedSpeeds = calculateSmoothedSpeeds(currentGpsPoints, 25,25,25) // Use 15-point filter
-  console.log('Smoothed speeds calculated:', smoothedSpeeds.length, 'points')
+  smoothedSpeeds = calculateSmoothedSpeeds(currentGpsPoints, 25,25,25) 
+    console.log('Smoothed speeds calculated:', smoothedSpeeds.length, 'points')
   
   // Debug: Log first few smoothed speeds
-  console.log('First 5 smoothed speeds:', smoothedSpeeds.slice(0, 5))
-  console.log('First 5 original GPS speeds:', currentGpsPoints.slice(0, 5).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
+ // console.log('First 5 smoothed speeds:', smoothedSpeeds.slice(0, 5))
+ // console.log('First 5 original GPS speeds:', currentGpsPoints.slice(0, 5).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
 
   // Add smoothed speeds to GPS points
   currentGpsPoints = currentGpsPoints.map((point, index) => ({
@@ -619,10 +619,10 @@ function processCSVData(csv: string): void {
   }))
   
   // Debug: Log first few GPS points with smoothed speeds
-  console.log('First 3 GPS points with smoothed speeds:', currentGpsPoints.slice(0, 3).map(p => ({
-    original: { velN: p.velN, velE: p.velE, velD: p.velD },
-    smoothed: { velN: p.smoothVelN, velE: p.smoothVelE, velD: p.smoothVelD }
-  })))
+//  console.log('First 3 GPS points with smoothed speeds:', currentGpsPoints.slice(0, 3).map(p => ({
+ //   original: { velN: p.velN, velE: p.velE, velD: p.velD },
+ //   smoothed: { velN: p.smoothVelN, velE: p.smoothVelE, velD: p.smoothVelD }
+ // })))
 
   // Hide dropzone and show controls
   const app = document.getElementById('app')

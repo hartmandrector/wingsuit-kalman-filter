@@ -888,15 +888,18 @@ class SpeedComparisonView extends PlotView {
   private maxSpeed: number = 0
 
   calculateBounds(points: PlotPoint[]): { minTime: number, maxTime: number, minSpeed: number, maxSpeed: number } {
-    if (points.length === 0) {
+    // For speed comparison, only use GPS data (first series) if available
+    const dataToUse = this.allSeries.length > 0 ? this.allSeries[0].data : points
+    
+    if (dataToUse.length === 0) {
       return { minTime: 0, maxTime: 0, minSpeed: 0, maxSpeed: 0 }
     }
 
-    const times = points.filter(p => p.time).map(p => p.time!)
+    const times = dataToUse.filter(p => p.time).map(p => p.time!)
     const velocities: number[] = []
     const smoothVelocities: number[] = []
 
-    points.forEach(point => {
+    dataToUse.forEach(point => {
       const mlocation = point as any
       let vel: number | undefined
       let smoothVel: number | undefined
@@ -937,21 +940,32 @@ class SpeedComparisonView extends PlotView {
     const plotWidth = this.canvas.width - 2 * margin
     const plotHeight = this.canvas.height - 2 * margin
 
-    const timeRange = this.maxTime - this.minTime
-    const speedRange = this.maxSpeed - this.minSpeed
+    const viewTimeRange = this.getViewWidth()
+    const viewSpeedRange = this.getViewHeight()
+    
+    // Calculate current view bounds with zoom and pan
+    const centerTime = (this.maxTime + this.minTime) / 2
+    const centerSpeed = (this.maxSpeed + this.minSpeed) / 2
+    
+    const minViewTime = centerTime + this.panX - viewTimeRange / 2
+    const maxViewTime = centerTime + this.panX + viewTimeRange / 2
+    const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
+    const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
 
-    const time = this.minTime + ((screenX - margin) / plotWidth) * timeRange
-    const speed = this.maxSpeed - ((screenY - margin) / plotHeight) * speedRange
+    const time = minViewTime + ((screenX - margin) / plotWidth) * (maxViewTime - minViewTime)
+    const speed = maxViewSpeed - ((screenY - margin) / plotHeight) * (maxViewSpeed - minViewSpeed)
 
     return { time, speed }
   }
 
   getViewWidth(): number {
-    return this.maxTime - this.minTime
+    const baseTimeRange = this.maxTime - this.minTime
+    return baseTimeRange / this.zoom
   }
 
   getViewHeight(): number {
-    return this.maxSpeed - this.minSpeed
+    const baseSpeedRange = this.maxSpeed - this.minSpeed
+    return baseSpeedRange / this.zoom
   }
 
   worldToScreen(point: PlotPoint): { x: number, y: number } {
@@ -961,10 +975,19 @@ class SpeedComparisonView extends PlotView {
     const plotWidth = this.canvas.width - 2 * margin
     const plotHeight = this.canvas.height - 2 * margin
 
-    const timeRange = this.maxTime - this.minTime
-    const speedRange = this.maxSpeed - this.minSpeed
+    const viewTimeRange = this.getViewWidth()
+    const viewSpeedRange = this.getViewHeight()
+    
+    // Calculate current view bounds with zoom and pan
+    const centerTime = (this.maxTime + this.minTime) / 2
+    const centerSpeed = (this.maxSpeed + this.minSpeed) / 2
+    
+    const minViewTime = centerTime + this.panX - viewTimeRange / 2
+    const maxViewTime = centerTime + this.panX + viewTimeRange / 2
+    const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
+    const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
 
-    const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
+    const x = margin + ((point.time - minViewTime) / (maxViewTime - minViewTime)) * plotWidth
     
     // Get velocity based on selected component
     const mlocation = point as any
@@ -981,7 +1004,7 @@ class SpeedComparisonView extends PlotView {
         break
     }
     
-    const y = margin + plotHeight - ((velocity - this.minSpeed) / speedRange) * plotHeight
+    const y = margin + plotHeight - ((velocity - minViewSpeed) / (maxViewSpeed - minViewSpeed)) * plotHeight
 
     return { x, y }
   }
@@ -989,6 +1012,62 @@ class SpeedComparisonView extends PlotView {
   setSelectedComponent(component: 'vn' | 've' | 'vd') {
     this.selectedComponent = component
     this.renderPlot()
+  }
+
+  protected handleWheel(e: WheelEvent): void {
+    e.preventDefault()
+    if (!this.canvas) return
+
+    const rect = this.canvas.getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+
+    const worldBefore = this.screenToWorld(mouseX, mouseY)
+    const zoomFactor = e.deltaY < 0 ? 1.2 : 1/1.2
+    const oldZoom = this.zoom
+    this.zoom *= zoomFactor
+    this.zoom = Math.max(0.1, Math.min(this.zoom, 50))
+    
+    const worldAfter = this.screenToWorld(mouseX, mouseY)
+    this.panX += (worldBefore.time - worldAfter.time)
+    this.panY += (worldBefore.speed - worldAfter.speed)
+
+    this.renderPlot()
+  }
+
+  public handleMouseMove(e: MouseEvent): void {
+    if (!this.canvas) return
+    const rect = this.canvas.getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+
+    if (this.isDragging) {
+      const deltaX = mouseX - this.lastMouseX
+      const deltaY = mouseY - this.lastMouseY
+
+      const viewTimeRange = this.getViewWidth()
+      const viewSpeedRange = this.getViewHeight()
+      const margin = 60
+      const plotWidth = this.canvas.width - 2 * margin
+      const plotHeight = this.canvas.height - 2 * margin
+
+      this.panX -= (deltaX / plotWidth) * viewTimeRange
+      this.panY += (deltaY / plotHeight) * viewSpeedRange
+
+      this.lastMouseX = mouseX
+      this.lastMouseY = mouseY
+
+      this.renderPlot()
+    } else {
+      // Handle hover detection
+      const nearestPoint = this.findNearestPoint(mouseX, mouseY)
+      if (nearestPoint !== this.hoveredPoint) {
+        if (globalSyncHover) {
+          globalSyncHover(nearestPoint, this)
+        }
+      }
+      this.canvas.style.cursor = 'grab'
+    }
   }
 
   public renderPlot(): void {
@@ -1036,11 +1115,21 @@ class SpeedComparisonView extends PlotView {
     this.ctx.strokeStyle = '#666'
     this.ctx.strokeRect(margin, margin, plotWidth, plotHeight)
 
+    // Calculate current view bounds with zoom and pan
+    const viewTimeRange = this.getViewWidth()
+    const viewSpeedRange = this.getViewHeight()
+    const centerTime = (this.maxTime + this.minTime) / 2
+    const centerSpeed = (this.maxSpeed + this.minSpeed) / 2
+    
+    const minViewTime = centerTime + this.panX - viewTimeRange / 2
+    const maxViewTime = centerTime + this.panX + viewTimeRange / 2
+    const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
+    const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
+
     // Draw horizontal grid lines (speed)
-    const speedRange = this.maxSpeed - this.minSpeed
-    const speedStep = Math.max(1, Math.round(speedRange / 10))
-    for (let speed = Math.ceil(this.minSpeed / speedStep) * speedStep; speed <= this.maxSpeed; speed += speedStep) {
-      const y = margin + plotHeight - ((speed - this.minSpeed) / speedRange) * plotHeight
+    const speedStep = Math.max(0.1, viewSpeedRange / 10)
+    for (let speed = Math.ceil(minViewSpeed / speedStep) * speedStep; speed <= maxViewSpeed; speed += speedStep) {
+      const y = margin + plotHeight - ((speed - minViewSpeed) / viewSpeedRange) * plotHeight
       
       this.ctx.strokeStyle = speed === 0 ? '#888' : '#444'
       this.ctx.lineWidth = speed === 0 ? 2 : 1
@@ -1056,10 +1145,9 @@ class SpeedComparisonView extends PlotView {
     }
 
     // Draw vertical grid lines (time)
-    const timeRange = this.maxTime - this.minTime
-    const timeStep = Math.max(1000, Math.round(timeRange / 10)) // At least 1 second
-    for (let time = Math.ceil(this.minTime / timeStep) * timeStep; time <= this.maxTime; time += timeStep) {
-      const x = margin + ((time - this.minTime) / timeRange) * plotWidth
+    const timeStep = Math.max(1000, viewTimeRange / 10) // At least 1 second
+    for (let time = Math.ceil(minViewTime / timeStep) * timeStep; time <= maxViewTime; time += timeStep) {
+      const x = margin + ((time - minViewTime) / viewTimeRange) * plotWidth
       
       this.ctx.strokeStyle = '#444'
       this.ctx.lineWidth = 1
@@ -1094,10 +1182,21 @@ class SpeedComparisonView extends PlotView {
   }
 
   private drawSpeedData(margin: number, plotWidth: number, plotHeight: number): void {
-    if (!this.ctx) return
+    if (!this.ctx || this.allSeries.length === 0) return
 
-    const timeRange = this.maxTime - this.minTime
-    const speedRange = this.maxSpeed - this.minSpeed
+    // Only use GPS data (first series) for speed comparison
+    const gpsData = this.allSeries[0].data
+
+    // Calculate current view bounds with zoom and pan
+    const viewTimeRange = this.getViewWidth()
+    const viewSpeedRange = this.getViewHeight()
+    const centerTime = (this.maxTime + this.minTime) / 2
+    const centerSpeed = (this.maxSpeed + this.minSpeed) / 2
+    
+    const minViewTime = centerTime + this.panX - viewTimeRange / 2
+    const maxViewTime = centerTime + this.panX + viewTimeRange / 2
+    const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
+    const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
 
     // Draw original velocities as red line
     this.ctx.strokeStyle = '#ff4444'
@@ -1105,7 +1204,7 @@ class SpeedComparisonView extends PlotView {
     this.ctx.beginPath()
     
     let firstPoint = true
-    for (const point of this.allPoints) {
+    for (const point of gpsData) {
       if (!point.time) continue
       
       const mlocation = point as any
@@ -1124,8 +1223,12 @@ class SpeedComparisonView extends PlotView {
       
       if (velocity === undefined) continue
       
-      const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
-      const y = margin + plotHeight - ((velocity - this.minSpeed) / speedRange) * plotHeight
+      // Only draw points within the current view
+      if (point.time < minViewTime || point.time > maxViewTime || 
+          velocity < minViewSpeed || velocity > maxViewSpeed) continue
+      
+      const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+      const y = margin + plotHeight - ((velocity - minViewSpeed) / viewSpeedRange) * plotHeight
       
       if (firstPoint) {
         this.ctx.moveTo(x, y)
@@ -1142,7 +1245,7 @@ class SpeedComparisonView extends PlotView {
     this.ctx.beginPath()
     
     firstPoint = true
-    for (const point of this.allPoints) {
+    for (const point of gpsData) {
       if (!point.time) continue
       
       const mlocation = point as any
@@ -1161,8 +1264,12 @@ class SpeedComparisonView extends PlotView {
       
       if (smoothVelocity === undefined) continue
       
-      const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
-      const y = margin + plotHeight - ((smoothVelocity - this.minSpeed) / speedRange) * plotHeight
+      // Only draw points within the current view
+      if (point.time < minViewTime || point.time > maxViewTime || 
+          smoothVelocity < minViewSpeed || smoothVelocity > maxViewSpeed) continue
+      
+      const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+      const y = margin + plotHeight - ((smoothVelocity - minViewSpeed) / viewSpeedRange) * plotHeight
       
       if (firstPoint) {
         this.ctx.moveTo(x, y)

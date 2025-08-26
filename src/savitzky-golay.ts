@@ -66,6 +66,7 @@ export function smoothPoints(data: Point[]): void {
 }
 
 // all sg coefficients
+// filter lengths: 5,7,9,11,13,15,17,19,21,23,25
 const cMX = [
   [-3, 12, 17, 12, -3],
   [-2, 3, 6, 7, 6, 3, -2],
@@ -277,6 +278,8 @@ export interface SmoothedSpeed {
 }
 
 export function calculateSmoothedSpeeds(gpsData: MLocation[], filterLength: number, secondFilterLength: number, thirdFilterLength: number): SmoothedSpeed[] {
+  
+  
   if (gpsData.length === 0) return []
   
   // Find the appropriate filter coefficients
