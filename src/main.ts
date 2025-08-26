@@ -15,9 +15,13 @@ import {
   setKalmanMeasurementNoiseVelocity,
   signedQuadraticScale
 } from './predict.js'
-import { MLocation, PlotSeries } from './types.js'
+import { setReference, latLonAltToENU } from './enu.js'
+import { MLocation, PlotSeries, PlotPoint } from './types.js'
+import { calculateSmoothedSpeeds } from './savitzky-golay.js'
 
 let currentGpsPoints: MLocation[] = []
+let currentPredictedPoints: PlotPoint[] = []
+let smoothedSpeeds: ReturnType<typeof calculateSmoothedSpeeds> = []
 
 const dropZone = document.getElementById('drop-zone')
 const fileInput = document.getElementById('file-input') as HTMLInputElement | null
@@ -66,6 +70,225 @@ if (motionEstimatorRadio && kalmanFilterRadio) {
       }
     }
   })
+}
+
+// Setup download button
+const downloadCsvBtn = document.getElementById('download-csv-btn') as HTMLButtonElement | null
+
+if (downloadCsvBtn) {
+  downloadCsvBtn.addEventListener('click', downloadCSV)
+}
+
+function downloadCSV(): void {
+  if (currentGpsPoints.length === 0 || currentPredictedPoints.length === 0) {
+    alert('No data available to download. Please load a CSV file first.')
+    return
+  }
+
+  // Create CSV content
+  const csvContent = generateCSVContent(currentGpsPoints, currentPredictedPoints)
+  
+  // Create and download file
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `flysight_filtered_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+}
+
+function generateCSVContent(gpsPoints: MLocation[], predictedPoints: PlotPoint[]): string {
+  // CSV headers
+  const headers = [
+    'timestamp_ms',
+    'time_iso',
+    'data_type',
+    'lat',
+    'lng', 
+    'alt_m',
+    'x_east_m',
+    'y_up_m',
+    'z_north_m',
+    'horizontal_distance_m',
+    'vel_n_ms',
+    'vel_e_ms',
+    'vel_d_ms',
+    'speed_ms',
+    'speed_mph',
+    'accel_n_ms2',
+    'accel_e_ms2', 
+    'accel_d_ms2',
+    'accel_magnitude_ms2',
+    'h_acc_m',
+    'v_acc_m',
+    's_acc_ms',
+    'kl',
+    'kd',
+    'roll_rad',
+    'roll_deg',
+    'vxs_ms',
+    'vxs_mph',
+    'vys_ms',
+    'vys_mph'
+  ]
+
+  let csvContent = headers.join(',') + '\n'
+
+  // Helper function to format timestamp
+  const formatTimestamp = (timestamp: number): string => {
+    return new Date(timestamp).toISOString()
+  }
+
+  // Helper function to calculate acceleration (numerical derivative of velocity)
+  const calculateAcceleration = (points: any[], index: number): {n: number, e: number, d: number} => {
+    if (index === 0) return {n: 0, e: 0, d: 0}
+    
+    const current = points[index]
+    const previous = points[index - 1]
+    const dt = (current.time - previous.time) / 1000 // Convert to seconds
+    
+    if (dt <= 0) return {n: 0, e: 0, d: 0}
+    
+    return {
+      n: (current.velN - previous.velN) / dt,
+      e: (current.velE - previous.velE) / dt,
+      d: (current.velD - previous.velD) / dt
+    }
+  }
+
+  // Add GPS measurement rows
+  for (let i = 0; i < gpsPoints.length; i++) {
+    const point = gpsPoints[i]
+    const accel = calculateAcceleration(gpsPoints, i)
+    const accelMagnitude = Math.sqrt(accel.n * accel.n + accel.e * accel.e + accel.d * accel.d)
+    const speed = Math.sqrt(point.velN * point.velN + point.velE * point.velE + point.velD * point.velD)
+    const horizontalDistance = point.x !== undefined && point.z !== undefined ? 
+      Math.sqrt(point.x * point.x + point.z * point.z) : 0
+
+    const row = [
+      point.time,
+      formatTimestamp(point.time),
+      'GPS_MEASUREMENT',
+      point.lat.toFixed(8),
+      point.lng.toFixed(8),
+      point.alt.toFixed(3),
+      (point.x !== undefined ? point.x.toFixed(3) : ''),
+      (point.y !== undefined ? point.y.toFixed(3) : ''),
+      (point.z !== undefined ? point.z.toFixed(3) : ''),
+      horizontalDistance.toFixed(3),
+      point.velN.toFixed(3),
+      point.velE.toFixed(3),
+      point.velD.toFixed(3),
+      speed.toFixed(3),
+      (speed * 2.23694).toFixed(3),
+      accel.n.toFixed(3),
+      accel.e.toFixed(3),
+      accel.d.toFixed(3),
+      accelMagnitude.toFixed(3),
+      point.hAcc.toFixed(3),
+      point.vAcc.toFixed(3),
+      point.sAcc.toFixed(3),
+      '', // kl - not available for GPS measurements
+      '', // kd
+      '', // roll_rad
+      '', // roll_deg
+      '', // vxs_ms
+      '', // vxs_mph
+      '', // vys_ms
+      ''  // vys_mph
+    ]
+    
+    csvContent += row.join(',') + '\n'
+  }
+
+  // Add predicted/filtered rows
+  for (const point of predictedPoints) {
+    const horizontalDistance = point.x !== undefined && point.z !== undefined ? 
+      Math.sqrt(point.x * point.x + point.z * point.z) : 0
+
+    // Calculate total speed and acceleration if velocity/acceleration components are available
+    let speed_ms = '', speed_mph = '', accel_magnitude = ''
+    let vel_n = '', vel_e = '', vel_d = ''
+    let accel_n = '', accel_e = '', accel_d = ''
+    
+    if (point.velX !== undefined && point.velY !== undefined && point.velZ !== undefined) {
+      // Convert ENU velocity back to NED for consistency with GPS data
+      vel_n = point.velZ.toFixed(3)  // North = ENU Z
+      vel_e = point.velX.toFixed(3)  // East = ENU X
+      vel_d = (-point.velY).toFixed(3) // Down = -ENU Y
+      
+      const speed = Math.sqrt(point.velX * point.velX + point.velY * point.velY + point.velZ * point.velZ)
+      speed_ms = speed.toFixed(3)
+      speed_mph = (speed * 2.23694).toFixed(3)
+    }
+    
+    if (point.accelX !== undefined && point.accelY !== undefined && point.accelZ !== undefined) {
+      // Convert ENU acceleration back to NED for consistency with GPS data
+      accel_n = point.accelZ.toFixed(3)  // North = ENU Z
+      accel_e = point.accelX.toFixed(3)  // East = ENU X  
+      accel_d = (-point.accelY).toFixed(3) // Down = -ENU Y
+      
+      const accelMag = Math.sqrt(point.accelX * point.accelX + point.accelY * point.accelY + point.accelZ * point.accelZ)
+      accel_magnitude = accelMag.toFixed(3)
+    }
+
+    // Calculate wingsuit performance metrics if available
+    let vxs_ms = '', vxs_mph = '', vys_ms = '', vys_mph = ''
+    if (point.kl !== undefined && point.kd !== undefined) {
+      const kl = point.kl
+      const kd = point.kd
+      const klkdSquared = kl * kl + kd * kd
+      const vxs = kl / Math.pow(klkdSquared, 0.75)
+      const vys = kd / Math.pow(klkdSquared, 0.75)
+      vxs_ms = vxs.toFixed(6)
+      vxs_mph = (vxs * 2.23694).toFixed(3)
+      vys_ms = vys.toFixed(6)
+      vys_mph = (vys * 2.23694).toFixed(3)
+    }
+
+    const row = [
+      point.time,
+      formatTimestamp(point.time),
+      'FILTER_OUTPUT',
+      point.lat.toFixed(8),
+      point.lng.toFixed(8),
+      point.alt.toFixed(3),
+      (point.x !== undefined ? point.x.toFixed(3) : ''),
+      (point.y !== undefined ? point.y.toFixed(3) : ''),
+      (point.z !== undefined ? point.z.toFixed(3) : ''),
+      horizontalDistance.toFixed(3),
+      vel_n,  // vel_n from filter
+      vel_e,  // vel_e from filter
+      vel_d,  // vel_d from filter
+      speed_ms, // speed from filter
+      speed_mph, // speed_mph from filter
+      accel_n,  // accel_n from filter
+      accel_e,  // accel_e from filter
+      accel_d,  // accel_d from filter
+      accel_magnitude, // accel_magnitude from filter
+      '', // h_acc - not available for predictions
+      '', // v_acc
+      '', // s_acc
+      (point.kl !== undefined ? point.kl.toExponential(6) : ''),
+      (point.kd !== undefined ? point.kd.toExponential(6) : ''),
+      (point.roll !== undefined ? point.roll.toFixed(6) : ''),
+      (point.roll !== undefined ? (point.roll * 180 / Math.PI).toFixed(3) : ''),
+      vxs_ms,
+      vxs_mph,
+      vys_ms,
+      vys_mph
+    ]
+    
+    csvContent += row.join(',') + '\n'
+  }
+
+  return csvContent
 }
 
 // Helper function for quadratic scaling display
@@ -212,10 +435,10 @@ document.body.addEventListener('dragleave', handleDragLeave)
 
 function handleDragOver(e: DragEvent): void {
   e.preventDefault()
-  const canvas = document.getElementById('plot-canvas')
+  const quadViewContainer = document.getElementById('quad-view-container')
   const overlay = document.getElementById('drag-overlay')
   
-  if (canvas?.classList.contains('fullscreen')) {
+  if (quadViewContainer?.classList.contains('show')) {
     overlay?.classList.add('show')
   } else {
     dropZone?.classList.add('dragover')
@@ -223,12 +446,12 @@ function handleDragOver(e: DragEvent): void {
 }
 
 function handleDragLeave(e: DragEvent): void {
-  const canvas = document.getElementById('plot-canvas')
+  const quadViewContainer = document.getElementById('quad-view-container')
   const overlay = document.getElementById('drag-overlay')
   
   // Only remove dragover when actually leaving the window
   if (e.clientX === 0 && e.clientY === 0) {
-    if (canvas?.classList.contains('fullscreen')) {
+    if (quadViewContainer?.classList.contains('show')) {
       overlay?.classList.remove('show')
     } else {
       dropZone?.classList.remove('dragover')
@@ -276,18 +499,32 @@ function regeneratePlot(): void {
   if (currentGpsPoints.length === 0) return
   
   // Generate new predicted points with current alpha
-  const predictedPoints = generatePredictedPoints(currentGpsPoints)
+  currentPredictedPoints = generatePredictedPoints(currentGpsPoints)
 
   // Create plot series
+  // Convert GPS points to PlotPoint format to include smoothed speeds
+  const gpsAsPlotPoints: PlotPoint[] = currentGpsPoints.map(point => ({
+    lat: point.lat,
+    lng: point.lng,
+    alt: point.alt,
+    time: point.time,
+    x: point.x,
+    y: point.y,
+    z: point.z,
+    smoothVelN: point.smoothVelN,
+    smoothVelE: point.smoothVelE,
+    smoothVelD: point.smoothVelD
+  }))
+  
   const series: PlotSeries[] = [
     {
       name: 'GPS Points',
-      data: currentGpsPoints,
+      data: gpsAsPlotPoints,
       style: { color: '#646cff', radius: 4 }
     },
     {
       name: 'Predicted Points',
-      data: predictedPoints,
+      data: currentPredictedPoints,
       style: { color: '#ff4444', radius: 2 }
     }
   ]
@@ -300,7 +537,7 @@ function initialPlot(): void {
   if (currentGpsPoints.length === 0) return
   
   // Generate initial predicted points
-  const predictedPoints = generatePredictedPoints(currentGpsPoints)
+  currentPredictedPoints = generatePredictedPoints(currentGpsPoints)
 
   // Create plot series
   const series: PlotSeries[] = [
@@ -311,7 +548,7 @@ function initialPlot(): void {
     },
     {
       name: 'Predicted Points',
-      data: predictedPoints,
+      data: currentPredictedPoints,
       style: { color: '#ff4444', radius: 2 }
     }
   ]
@@ -349,25 +586,57 @@ function processCSVData(csv: string): void {
     return
   }
 
+  // Set ENU reference to first GPS point and calculate ENU coordinates for all points
+  const firstPoint = currentGpsPoints[0]
+  setReference({ lat: firstPoint.lat, lng: firstPoint.lng, alt: firstPoint.alt })
+  
+  // Add ENU coordinates to all GPS points for display
+  currentGpsPoints = currentGpsPoints.map(point => {
+    const enu = latLonAltToENU({ lat: point.lat, lng: point.lng, alt: point.alt })
+    return {
+      ...point,
+      x: enu.x,  // East
+      y: enu.y,  // Up  
+      z: enu.z   // North
+    }
+  })
+
+  // Calculate smoothed GPS speeds (computed once when CSV is loaded)
+  console.log('Calculating smoothed GPS speeds...')
+  smoothedSpeeds = calculateSmoothedSpeeds(currentGpsPoints, 25,25,25) // Use 15-point filter
+  console.log('Smoothed speeds calculated:', smoothedSpeeds.length, 'points')
+  
+  // Debug: Log first few smoothed speeds
+  console.log('First 5 smoothed speeds:', smoothedSpeeds.slice(0, 5))
+  console.log('First 5 original GPS speeds:', currentGpsPoints.slice(0, 5).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
+
+  // Add smoothed speeds to GPS points
+  currentGpsPoints = currentGpsPoints.map((point, index) => ({
+    ...point,
+    smoothVelN: smoothedSpeeds[index]?.velN,
+    smoothVelE: smoothedSpeeds[index]?.velE,
+    smoothVelD: smoothedSpeeds[index]?.velD
+  }))
+  
+  // Debug: Log first few GPS points with smoothed speeds
+  console.log('First 3 GPS points with smoothed speeds:', currentGpsPoints.slice(0, 3).map(p => ({
+    original: { velN: p.velN, velE: p.velE, velD: p.velD },
+    smoothed: { velN: p.smoothVelN, velE: p.smoothVelE, velD: p.smoothVelD }
+  })))
+
   // Hide dropzone and show controls
   const app = document.getElementById('app')
-  const canvas = document.getElementById('plot-canvas') as HTMLCanvasElement | null
-  const controlsPanel = document.getElementById('controls-panel') as HTMLElement | null
+  const quadViewContainer = document.getElementById('quad-view-container') as HTMLElement | null
   
-  if (!app || !canvas) return
+  if (!app || !quadViewContainer) return
   
   app.classList.add('hidden')
   
-  if (controlsPanel) {
-    controlsPanel.classList.add('show')
-    updateControlsVisibility()
-  }
+  // Update controls visibility for filter type
+  updateControlsVisibility()
   
-  // Make canvas fullscreen
-  canvas.classList.remove('fullscreen') // Remove any existing state first
-  canvas.classList.add('fullscreen')
-  canvas.width = window.innerWidth
-  canvas.height = window.innerHeight
+  // Show quad view container
+  quadViewContainer.classList.add('show')
   
   // Generate initial plot (resets zoom)
   initialPlot()

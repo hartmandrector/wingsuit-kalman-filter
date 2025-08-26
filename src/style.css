@@ -98,6 +98,97 @@ h1 {
   margin: 0;
 }
 
+/* Dual view layout */
+#dual-view-container {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  background-color: #000;
+  flex-direction: column;
+}
+
+#dual-view-container.show {
+  display: flex;
+}
+
+/* Quad view layout - Three columns */
+#quad-view-container {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  background-color: #000;
+  flex-direction: row;
+}
+
+#quad-view-container.show {
+  display: flex;
+}
+
+#left-column,
+#middle-column,
+#right-column {
+  display: flex;
+  flex-direction: column;
+}
+
+#left-column,
+#middle-column {
+  flex: 2;
+  border-right: 2px solid #333;
+}
+
+#right-column {
+  flex: 1;
+  min-width: 300px;
+  max-width: 350px;
+  border-right: none;
+  background-color: #1a1a1a;
+}
+
+#top-view-container,
+#profile-view-container,
+#polar-view-container,
+#acceleration-view-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 2px solid #333;
+}
+
+#profile-view-container,
+#acceleration-view-container {
+  border-bottom: none;
+}
+
+#top-view-container h3,
+#profile-view-container h3,
+#polar-view-container h3,
+#acceleration-view-container h3 {
+  color: white;
+  text-align: center;
+  margin: 5px 0;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+#top-canvas,
+#profile-canvas,
+#polar-canvas,
+#acceleration-canvas {
+  flex: 1;
+  display: block;
+  background-color: #000;
+  border: none;
+}
+
 #drag-overlay {
   display: none;
   position: fixed;
@@ -123,24 +214,29 @@ h1 {
 }
 
 #controls-panel {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.8);
+  flex: 1;
+  background: #1a1a1a;
   color: white;
   padding: 15px;
-  border-radius: 8px;
   min-width: 250px;
-  max-width: 300px;
-  max-height: 80vh;
+  max-width: 350px;
   overflow-y: auto;
-  z-index: 1001;
   font-family: system-ui;
-  display: none;
+  display: flex;
+  flex-direction: column;
 }
 
-#controls-panel.show {
-  display: block;
+/* Remove the old floating panel styles when integrated */
+#quad-view-container #controls-panel {
+  position: static;
+  background: transparent;
+  border-radius: 0;
+  z-index: auto;
+  max-height: none;
+}
+
+#quad-view-container.show #controls-panel {
+  display: flex;
 }
 
 #filter-type-control {
@@ -211,6 +307,35 @@ h1 {
 #kalman-r-acceleration-slider {
   width: 100%;
   margin: 5px 0;
+}
+
+#download-controls {
+  margin: 20px 0;
+  padding: 15px 0;
+  border-top: 1px solid #555;
+  border-bottom: 1px solid #555;
+}
+
+#download-csv-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #646cff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#download-csv-btn:hover {
+  background-color: #535bf2;
+}
+
+#download-csv-btn:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 #point-info {

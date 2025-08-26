@@ -339,7 +339,9 @@ export class KalmanFilter3D {
     const dragN = proj * vN / vel
     const dragE = proj * vE / vel
     const dragD = proj * vD / vel
-    const accelDrag = Math.sqrt(dragN * dragN + dragE * dragE + dragD * dragD)
+    // Calculate correct sign for drag
+    const dragSign = -this.signum(dragN * vN + dragE * vE + dragD * vD)
+    const accelDrag = dragSign * Math.sqrt(dragN * dragN + dragE * dragE + dragD * dragD)
 
     // Calculate acceleration due to lift (rejection from velocity)
     const liftN = accelN - dragN
@@ -347,13 +349,11 @@ export class KalmanFilter3D {
     const liftD = accelDminusG - dragD
     const accelLift = Math.sqrt(liftN * liftN + liftE * liftE + liftD * liftD)
 
-    // Calculate correct sign for drag
-    const dragSign = -this.signum(dragN * vN + dragE * vE + dragD * vD)
+    
 
     // Calculate wingsuit coefficients
     const kl = accelLift / gravity / vel / vel
-    const kd = accelDrag / gravity / vel / vel * dragSign
-
+    const kd = accelDrag / gravity / vel / vel 
     // Calculate roll angle
     const smoothGroundspeed = Math.sqrt(vN * vN + vE * vE)
     if (smoothGroundspeed > 1.0) {

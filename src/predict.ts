@@ -250,9 +250,62 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
       const predicted = estimator.predictAt(nextPredictionTime)
       if (predicted) {
         const predLatLon = ENUToLatLngAlt(predicted.position)
+        
+        // Calculate sustained speeds from wingsuit coefficients
+        let vxs: number | undefined = undefined
+        let vys: number | undefined = undefined
+        
+        if (predicted.kl !== undefined && predicted.kd !== undefined) {
+          const kl = predicted.kl
+          const kd = predicted.kd
+          const klkdSquared = kl * kl + kd * kd
+          
+          if (klkdSquared > 0) {
+            // Sustained speeds formula: v = coefficient / (kl² + kd²)^0.75
+            // Calculate in NED coordinates (same as wingsuit physics)
+            const denominator = Math.pow(klkdSquared, 0.75)
+            vxs = kl / denominator  // Horizontal sustained speed (NED)
+            vys = kd / denominator  // Vertical sustained speed (NED, positive down)
+          }
+        }
+        
+        // Find the closest GPS point to get smoothed speeds
+        let closestGpsIndex = 0
+        let minTimeDiff = Math.abs(gpsPoints[0].time - nextPredictionTime)
+        for (let i = 1; i < gpsPoints.length; i++) {
+          const timeDiff = Math.abs(gpsPoints[i].time - nextPredictionTime)
+          if (timeDiff < minTimeDiff) {
+            minTimeDiff = timeDiff
+            closestGpsIndex = i
+          }
+        }
+        const closestGpsPoint = gpsPoints[closestGpsIndex]
+        
         interpolatedPoints.push({
           ...predLatLon,
-          time: nextPredictionTime
+          time: nextPredictionTime,
+          // Store ENU coordinates for display (x=East, y=Up, z=North)
+          x: predicted.position.x,
+          y: predicted.position.y,
+          z: predicted.position.z,
+          // Store ENU velocity components (m/s)
+          velX: predicted.velocity.x,
+          velY: predicted.velocity.y,
+          velZ: predicted.velocity.z,
+          // Store ENU acceleration components (m/s²)
+          accelX: predicted.acceleration.x,
+          accelY: predicted.acceleration.y,
+          accelZ: predicted.acceleration.z,
+          kl: predicted.kl,
+          kd: predicted.kd,
+          roll: predicted.roll,
+          // Store sustained speeds
+          vxs: vxs,
+          vys: filterType === 'kalman' ? -(vys ?? 0) : (vys ?? 0), // Convert to ENU (positive up)
+          // Add smoothed GPS speeds from closest GPS point
+          smoothVelN: closestGpsPoint.smoothVelN,
+          smoothVelE: closestGpsPoint.smoothVelE,
+          smoothVelD: closestGpsPoint.smoothVelD
         })
       }
       nextPredictionTime += 1000 / refreshRate
