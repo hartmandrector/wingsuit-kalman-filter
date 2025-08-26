@@ -39,9 +39,17 @@
           <h3>Speed Components (Horizontal vs Vertical)</h3>
           <canvas id="polar-canvas" width="800" height="600"></canvas>
         </div>
-        <div id="acceleration-view-container">
-          <h3>Acceleration Chart (Future)</h3>
-          <canvas id="acceleration-canvas" width="800" height="600"></canvas>
+        <div id="speed-comparison-view-container">
+          <h3>Speed Comparison Chart</h3>
+          <div id="speed-selector-container">
+            <label for="speed-component-selector">Velocity Component:</label>
+            <select id="speed-component-selector">
+              <option value="vn" selected>VN (North)</option>
+              <option value="ve">VE (East)</option>
+              <option value="vd">VD (Down)</option>
+            </select>
+          </div>
+          <canvas id="speed-comparison-canvas" width="800" height="600"></canvas>
         </div>
       </div>
       <div id="right-column">

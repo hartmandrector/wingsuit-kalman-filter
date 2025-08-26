@@ -1,6 +1,6 @@
 import './style.css'
 import { parseCSV } from './csvParser.js'
-import { plotData } from './plotter.js'
+import { plotData, speedComparisonView } from './plotter.js'
 import { 
   generatePredictedPoints, 
   setAlpha, 
@@ -638,6 +638,9 @@ function processCSVData(csv: string): void {
   // Show quad view container
   quadViewContainer.classList.add('show')
   
+  // Set up speed component selector
+  setupSpeedSelector()
+  
   // Generate initial plot (resets zoom)
   initialPlot()
 }
@@ -656,3 +659,19 @@ async function loadDefaultFile(): Promise<void> {
 
 // Load default file when page loads
 loadDefaultFile()
+
+// Set up speed component selector
+function setupSpeedSelector() {
+  const selector = document.getElementById('speed-component-selector') as HTMLSelectElement
+  if (selector) {
+    selector.addEventListener('change', () => {
+      const selectedComponent = selector.value as 'vn' | 've' | 'vd'
+      speedComparisonView.setSelectedComponent(selectedComponent)
+    })
+  }
+}
+
+// Initialize speed selector when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  setupSpeedSelector()
+})

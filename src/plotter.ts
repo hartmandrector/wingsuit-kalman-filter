@@ -879,10 +879,332 @@ class PolarView extends PlotView {
   }
 }
 
+// Speed Comparison Chart View - shows velocity components over time
+class SpeedComparisonView extends PlotView {
+  private selectedComponent: 'vn' | 've' | 'vd' = 'vn'
+  private minTime: number = 0
+  private maxTime: number = 0
+  private minSpeed: number = 0
+  private maxSpeed: number = 0
+
+  calculateBounds(points: PlotPoint[]): { minTime: number, maxTime: number, minSpeed: number, maxSpeed: number } {
+    if (points.length === 0) {
+      return { minTime: 0, maxTime: 0, minSpeed: 0, maxSpeed: 0 }
+    }
+
+    const times = points.filter(p => p.time).map(p => p.time!)
+    const velocities: number[] = []
+    const smoothVelocities: number[] = []
+
+    points.forEach(point => {
+      const mlocation = point as any
+      let vel: number | undefined
+      let smoothVel: number | undefined
+
+      switch (this.selectedComponent) {
+        case 'vn':
+          vel = mlocation.velN
+          smoothVel = mlocation.smoothVelN
+          break
+        case 've':
+          vel = mlocation.velE
+          smoothVel = mlocation.smoothVelE
+          break
+        case 'vd':
+          vel = mlocation.velD
+          smoothVel = mlocation.smoothVelD
+          break
+      }
+
+      if (vel !== undefined) velocities.push(vel)
+      if (smoothVel !== undefined) smoothVelocities.push(smoothVel)
+    })
+
+    const allSpeeds = [...velocities, ...smoothVelocities]
+    
+    return {
+      minTime: Math.min(...times),
+      maxTime: Math.max(...times),
+      minSpeed: allSpeeds.length > 0 ? Math.min(...allSpeeds) : 0,
+      maxSpeed: allSpeeds.length > 0 ? Math.max(...allSpeeds) : 0
+    }
+  }
+
+  screenToWorld(screenX: number, screenY: number): { time: number, speed: number } {
+    if (!this.canvas) return { time: 0, speed: 0 }
+
+    const margin = 60
+    const plotWidth = this.canvas.width - 2 * margin
+    const plotHeight = this.canvas.height - 2 * margin
+
+    const timeRange = this.maxTime - this.minTime
+    const speedRange = this.maxSpeed - this.minSpeed
+
+    const time = this.minTime + ((screenX - margin) / plotWidth) * timeRange
+    const speed = this.maxSpeed - ((screenY - margin) / plotHeight) * speedRange
+
+    return { time, speed }
+  }
+
+  getViewWidth(): number {
+    return this.maxTime - this.minTime
+  }
+
+  getViewHeight(): number {
+    return this.maxSpeed - this.minSpeed
+  }
+
+  worldToScreen(point: PlotPoint): { x: number, y: number } {
+    if (!this.canvas || !point.time) return { x: 0, y: 0 }
+
+    const margin = 60
+    const plotWidth = this.canvas.width - 2 * margin
+    const plotHeight = this.canvas.height - 2 * margin
+
+    const timeRange = this.maxTime - this.minTime
+    const speedRange = this.maxSpeed - this.minSpeed
+
+    const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
+    
+    // Get velocity based on selected component
+    const mlocation = point as any
+    let velocity: number = 0
+    switch (this.selectedComponent) {
+      case 'vn':
+        velocity = mlocation.velN || 0
+        break
+      case 've':
+        velocity = mlocation.velE || 0
+        break
+      case 'vd':
+        velocity = mlocation.velD || 0
+        break
+    }
+    
+    const y = margin + plotHeight - ((velocity - this.minSpeed) / speedRange) * plotHeight
+
+    return { x, y }
+  }
+
+  setSelectedComponent(component: 'vn' | 've' | 'vd') {
+    this.selectedComponent = component
+    this.renderPlot()
+  }
+
+  public renderPlot(): void {
+    if (!this.canvas || !this.ctx || this.allSeries.length === 0) return
+
+    const margin = 60
+    const plotWidth = this.canvas.width - 2 * margin
+    const plotHeight = this.canvas.height - 2 * margin
+
+    // Calculate bounds
+    const bounds = this.calculateBounds(this.allPoints)
+    this.minTime = bounds.minTime
+    this.maxTime = bounds.maxTime
+    this.minSpeed = bounds.minSpeed
+    this.maxSpeed = bounds.maxSpeed
+
+    // Add some padding to speed range
+    const speedPadding = (this.maxSpeed - this.minSpeed) * 0.1
+    this.minSpeed -= speedPadding
+    this.maxSpeed += speedPadding
+
+    // Clear canvas
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+
+    // Draw axes and grid
+    this.drawAxesAndGrid(margin, plotWidth, plotHeight)
+
+    // Draw speed data
+    this.drawSpeedData(margin, plotWidth, plotHeight)
+  }
+
+  private drawAxesAndGrid(margin: number, plotWidth: number, plotHeight: number): void {
+    if (!this.ctx) return
+
+    this.ctx.strokeStyle = '#666'
+    this.ctx.lineWidth = 1
+    this.ctx.fillStyle = '#ccc'
+    this.ctx.font = '12px system-ui'
+
+    // Draw plot background
+    this.ctx.fillStyle = '#222'
+    this.ctx.fillRect(margin, margin, plotWidth, plotHeight)
+    
+    // Draw border
+    this.ctx.strokeStyle = '#666'
+    this.ctx.strokeRect(margin, margin, plotWidth, plotHeight)
+
+    // Draw horizontal grid lines (speed)
+    const speedRange = this.maxSpeed - this.minSpeed
+    const speedStep = Math.max(1, Math.round(speedRange / 10))
+    for (let speed = Math.ceil(this.minSpeed / speedStep) * speedStep; speed <= this.maxSpeed; speed += speedStep) {
+      const y = margin + plotHeight - ((speed - this.minSpeed) / speedRange) * plotHeight
+      
+      this.ctx.strokeStyle = speed === 0 ? '#888' : '#444'
+      this.ctx.lineWidth = speed === 0 ? 2 : 1
+      this.ctx.beginPath()
+      this.ctx.moveTo(margin, y)
+      this.ctx.lineTo(margin + plotWidth, y)
+      this.ctx.stroke()
+      
+      // Y-axis labels (speed)
+      this.ctx.fillStyle = '#ccc'
+      this.ctx.textAlign = 'right'
+      this.ctx.fillText(speed.toFixed(1), margin - 10, y + 4)
+    }
+
+    // Draw vertical grid lines (time)
+    const timeRange = this.maxTime - this.minTime
+    const timeStep = Math.max(1000, Math.round(timeRange / 10)) // At least 1 second
+    for (let time = Math.ceil(this.minTime / timeStep) * timeStep; time <= this.maxTime; time += timeStep) {
+      const x = margin + ((time - this.minTime) / timeRange) * plotWidth
+      
+      this.ctx.strokeStyle = '#444'
+      this.ctx.lineWidth = 1
+      this.ctx.beginPath()
+      this.ctx.moveTo(x, margin)
+      this.ctx.lineTo(x, margin + plotHeight)
+      this.ctx.stroke()
+      
+      // X-axis labels (time)
+      const date = new Date(time)
+      const timeLabel = `${date.getMinutes()}:${date.getSeconds().toString().padStart(2, '0')}`
+      this.ctx.fillStyle = '#ccc'
+      this.ctx.textAlign = 'center'
+      this.ctx.fillText(timeLabel, x, margin + plotHeight + 20)
+    }
+
+    // Draw axis labels
+    this.ctx.fillStyle = '#fff'
+    this.ctx.font = '14px system-ui'
+    this.ctx.textAlign = 'center'
+    
+    // X-axis label
+    this.ctx.fillText('Time', margin + plotWidth / 2, this.canvas!.height - 10)
+    
+    // Y-axis label (rotated)
+    const componentName = this.selectedComponent.toUpperCase()
+    this.ctx.save()
+    this.ctx.translate(15, margin + plotHeight / 2)
+    this.ctx.rotate(-Math.PI / 2)
+    this.ctx.fillText(`${componentName} Speed (m/s)`, 0, 0)
+    this.ctx.restore()
+  }
+
+  private drawSpeedData(margin: number, plotWidth: number, plotHeight: number): void {
+    if (!this.ctx) return
+
+    const timeRange = this.maxTime - this.minTime
+    const speedRange = this.maxSpeed - this.minSpeed
+
+    // Draw original velocities as red line
+    this.ctx.strokeStyle = '#ff4444'
+    this.ctx.lineWidth = 2
+    this.ctx.beginPath()
+    
+    let firstPoint = true
+    for (const point of this.allPoints) {
+      if (!point.time) continue
+      
+      const mlocation = point as any
+      let velocity: number | undefined
+      switch (this.selectedComponent) {
+        case 'vn':
+          velocity = mlocation.velN
+          break
+        case 've':
+          velocity = mlocation.velE
+          break
+        case 'vd':
+          velocity = mlocation.velD
+          break
+      }
+      
+      if (velocity === undefined) continue
+      
+      const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
+      const y = margin + plotHeight - ((velocity - this.minSpeed) / speedRange) * plotHeight
+      
+      if (firstPoint) {
+        this.ctx.moveTo(x, y)
+        firstPoint = false
+      } else {
+        this.ctx.lineTo(x, y)
+      }
+    }
+    this.ctx.stroke()
+
+    // Draw smoothed velocities as blue line
+    this.ctx.strokeStyle = '#0099ff'
+    this.ctx.lineWidth = 2
+    this.ctx.beginPath()
+    
+    firstPoint = true
+    for (const point of this.allPoints) {
+      if (!point.time) continue
+      
+      const mlocation = point as any
+      let smoothVelocity: number | undefined
+      switch (this.selectedComponent) {
+        case 'vn':
+          smoothVelocity = mlocation.smoothVelN
+          break
+        case 've':
+          smoothVelocity = mlocation.smoothVelE
+          break
+        case 'vd':
+          smoothVelocity = mlocation.smoothVelD
+          break
+      }
+      
+      if (smoothVelocity === undefined) continue
+      
+      const x = margin + ((point.time - this.minTime) / timeRange) * plotWidth
+      const y = margin + plotHeight - ((smoothVelocity - this.minSpeed) / speedRange) * plotHeight
+      
+      if (firstPoint) {
+        this.ctx.moveTo(x, y)
+        firstPoint = false
+      } else {
+        this.ctx.lineTo(x, y)
+      }
+    }
+    this.ctx.stroke()
+
+    // Draw legend
+    this.ctx.fillStyle = '#fff'
+    this.ctx.font = '12px system-ui'
+    this.ctx.textAlign = 'left'
+    
+    let yOffset = 20
+    this.ctx.fillText(`${this.selectedComponent.toUpperCase()} Speed Comparison`, 10, yOffset)
+    yOffset += 20
+    
+    // Original velocity legend
+    this.ctx.fillStyle = '#ff4444'
+    this.ctx.fillRect(10, yOffset - 8, 15, 3)
+    this.ctx.fillStyle = '#fff'
+    this.ctx.fillText(`Original ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+    yOffset += 20
+    
+    // Smoothed velocity legend
+    this.ctx.fillStyle = '#0099ff'
+    this.ctx.fillRect(10, yOffset - 8, 15, 3)
+    this.ctx.fillStyle = '#fff'
+    this.ctx.fillText(`Smoothed ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+  }
+}
+
 // Global instances (updated)
 const topDownView = new TopDownView('top-canvas')
 const profileView = new ProfileView('profile-canvas')
 const polarView = new PolarView('polar-canvas')
+const speedComparisonView = new SpeedComparisonView('speed-comparison-canvas')
+
+// Export speed comparison view for external control
+export { speedComparisonView }
 
 // Global state management
 let currentZoom = 1
@@ -918,6 +1240,11 @@ function syncHover(hoveredPoint: PlotPoint | null, sourceView?: PlotView) {
   if (sourceView !== polarView) {
     polarView.hoveredPoint = hoveredPoint
     polarView.renderPlot()
+  }
+  
+  if (sourceView !== speedComparisonView) {
+    speedComparisonView.hoveredPoint = hoveredPoint
+    speedComparisonView.renderPlot()
   }
   
   updatePointInfo(hoveredPoint)
@@ -1014,6 +1341,7 @@ export function plotData(series: PlotSeries[], preserveZoom: boolean = false): v
   topDownView.plotData(series, preserveZoom)
   profileView.plotData(series, preserveZoom)
   polarView.plotData(series, preserveZoom)
+  speedComparisonView.plotData(series, preserveZoom)
   
   // Initialize point info
   updatePointInfo(null)

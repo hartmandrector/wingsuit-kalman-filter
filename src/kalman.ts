@@ -124,6 +124,7 @@ export class KalmanFilter3D {
     const [x, y, z, vx, vy, vz, ax, ay, az, kl, kd, roll] = state
 
     // Calculate current acceleration
+   
     const [ax_current, ay_current, az_current] = this.calculateWingsuitAcceleration(vz, -vy, vx, kl, kd, roll)
 
     // Update velocity using trapezoidal rule
@@ -273,7 +274,10 @@ export class KalmanFilter3D {
     }
 
     // Update wingsuit parameters from kalman acceleration,
-    this.updateWingsuitParameters(this.state[5], -this.state[4], this.state[3], this.state[8], -this.state[7], this.state[6])// measuredAz, -measuredAy, measuredAx)
+    const [ae_kalman, ad_kalman, an_kalman] = [this.state[6], -this.state[7], this.state[8]]
+    const [ve_kalman, vd_kalman, vn_kalman] = [this.state[3], -this.state[4], this.state[5]]
+    this.updateWingsuitParameters(vn_kalman, ve_kalman, vd_kalman, an_kalman, ae_kalman, ad_kalman)
+
 
  if (this.lastUpdateTime !== undefined) {
       const deltaTime = (timestamp - this.lastUpdateTime) / 1000

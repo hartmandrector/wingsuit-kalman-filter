@@ -301,7 +301,7 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
           roll: predicted.roll,
           // Store sustained speeds
           vxs: vxs,
-          vys: filterType === 'kalman' ? -(vys ?? 0) : (vys ?? 0), // Convert to ENU (positive up)
+          vys: filterType === 'kalman' ? (vys ?? 0) : (vys ?? 0), // Convert to ENU (positive up)
           // Add smoothed GPS speeds from closest GPS point
           smoothVelN: closestGpsPoint.smoothVelN,
           smoothVelE: closestGpsPoint.smoothVelE,
