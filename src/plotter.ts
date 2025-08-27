@@ -460,13 +460,13 @@ class PolarView extends PlotView {
   private minVerticalSpeed = -100  // m/s (negative for descent)
 
   calculateBounds(points: PlotPoint[]) {
-    // Calculate max horizontal and vertical speeds for scaling
+    // Calculate max horizontal and vertical speeds for scaling - GPS speeds only
     let maxHSpeed = 0
     let maxVSpeed = 0
     let minVSpeed = 0
     
     for (const point of points) {
-      // Check GPS speeds (MLocation)
+      // Only check GPS speeds (MLocation) - ignore filter, sustained, and smoothed speeds
       const mlocation = point as any
       if (mlocation.velN !== undefined && mlocation.velE !== undefined && mlocation.velD !== undefined) {
         const horizontalSpeed = Math.sqrt(mlocation.velN ** 2 + mlocation.velE ** 2)
@@ -475,37 +475,6 @@ class PolarView extends PlotView {
         maxHSpeed = Math.max(maxHSpeed, horizontalSpeed)
         maxVSpeed = Math.max(maxVSpeed, verticalSpeed)
         minVSpeed = Math.min(minVSpeed, verticalSpeed)
-      }
-      
-      // Check filter speeds (ENU coordinates)
-      if (point.velX !== undefined && point.velY !== undefined && point.velZ !== undefined) {
-        const horizontalSpeed = Math.sqrt(point.velX ** 2 + point.velZ ** 2) // East² + North²
-        const verticalSpeed = point.velY // ENU Y is up
-        
-        maxHSpeed = Math.max(maxHSpeed, horizontalSpeed)
-        maxVSpeed = Math.max(maxVSpeed, verticalSpeed)
-        minVSpeed = Math.min(minVSpeed, verticalSpeed)
-      }
-      
-      // Check sustained speeds (vxs, vys)
-      if (point.vxs !== undefined && point.vys !== undefined) {
-        const sustainedHorizontalSpeed = Math.abs(point.vxs) // vxs can be negative
-        // vys is stored in NED (positive down), convert to ENU (positive up) for bounds
-        const sustainedVerticalSpeed = -point.vys // Convert NED down to ENU up
-        
-        maxHSpeed = Math.max(maxHSpeed, sustainedHorizontalSpeed)
-        maxVSpeed = Math.max(maxVSpeed, sustainedVerticalSpeed)
-        minVSpeed = Math.min(minVSpeed, sustainedVerticalSpeed)
-      }
-      
-      // Check smoothed GPS speeds
-      if (point.smoothVelN !== undefined && point.smoothVelE !== undefined && point.smoothVelD !== undefined) {
-        const smoothedHorizontalSpeed = Math.sqrt(point.smoothVelN * point.smoothVelN + point.smoothVelE * point.smoothVelE)
-        const smoothedVerticalSpeed = -point.smoothVelD // Convert NED down to ENU up
-        
-        maxHSpeed = Math.max(maxHSpeed, smoothedHorizontalSpeed)
-        maxVSpeed = Math.max(maxVSpeed, smoothedVerticalSpeed)
-        minVSpeed = Math.min(minVSpeed, smoothedVerticalSpeed)
       }
     }
     

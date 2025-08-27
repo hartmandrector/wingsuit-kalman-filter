@@ -10,6 +10,7 @@ import {
 } from './matrix.js'
 import { Vector3, MLocation } from './types.js'
 import { MotionState } from './motionestimator.js'
+import { calculateWingsuitAcceleration, calculateWingsuitParameters } from './wse.js'
 
 
 export class KalmanFilter3D {
@@ -74,40 +75,11 @@ export class KalmanFilter3D {
     this.originGps = undefined
   }
 
-  private signum(x: number): number {
-    return x > 0 ? 1 : x < 0 ? -1 : 0
-  }
-
-  // Calculate wingsuit acceleration based on velocity and wingsuit parameters
-  // calculate in gps coordinates and convert to ENU
-  private calculateWingsuitAcceleration(vx: number, vy: number, vz: number, kl: number, kd: number, roll: number): [number, number, number] {
-    const g = 9.81
-    const v = Math.sqrt(vx * vx + vy * vy + vz * vz)
-
-    if (v < 0.1) return [0, -g, 0] // Handle near-zero velocity
-
-    const groundSpeed = Math.sqrt(vx * vx + vz * vz)
-    if (groundSpeed < 0.1) return [0, -g, 0] // Handle near-zero groundspeed
-
-    const cosRoll = Math.cos(roll)
-    const sinRoll = Math.sin(roll)
-
-    const ax = (kl * v / groundSpeed * (vx * vy * cosRoll - vz * v * sinRoll) - kd * vx * v)
-    const ay = (g - kl * v * groundSpeed * cosRoll - kd * vy * v)
-    const az = (kl * v / groundSpeed * (vz * vy * cosRoll + vx * v * sinRoll) - kd * vz * v)
-
-    // convert to ENU coordinates
-    // ENU: x = East, y = Up, z = North
-    // vx, vy, vz are in NDE: North, Down, East
-    console.log(`Wingsuit acceleration: [${ax}, ${ay}, ${az}] for velocity [${vx}, ${vy}, ${vz}] and parameters [kl: ${kl}, kd: ${kd}, roll: ${roll}]`)
-    return [az, -ay, ax]
-  }
-
   private integrateStep(dt: number): void {
     const [x, y, z, vx, vy, vz, ax, ay, az, kl, kd, roll] = this.state
 
     // Calculate current acceleration
-    const [ax_current, ay_current, az_current] = this.calculateWingsuitAcceleration(vz, -vy, vx, kl, kd, roll)
+    const [ax_current, ay_current, az_current] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
 
     // Update velocity using trapezoidal rule
     let vx_next = vx + (ax_current + ax) / 2 * dt
@@ -129,7 +101,7 @@ export class KalmanFilter3D {
 
     // Calculate current acceleration
    
-    const [ax_current, ay_current, az_current] = this.calculateWingsuitAcceleration(vz, -vy, vx, kl, kd, roll)
+    const [ax_current, ay_current, az_current] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
 
     // Update velocity using trapezoidal rule
     let vx_next = vx + (ax_current + ax) / 2 * dt
@@ -171,7 +143,7 @@ export class KalmanFilter3D {
     let remainingTime = deltaTime
 
     //save old state for restoring after prediction
-    const oldState = [...this.state]
+   //const oldState = [...this.state]
 
     while (remainingTime > 0) {
       const stepSize = Math.min(remainingTime, maxStepSize)
@@ -181,7 +153,7 @@ export class KalmanFilter3D {
 
     // Create approximate Jacobian for covariance propagation
     const F = this.calculateJacobian(deltaTime)
-
+    console.log("F:", F)
     // Predict covariance: P = F*P*F^T + Q
     const FP = matrixMultiply(F, this.P)
     const FPFT = matrixMultiply(FP, transpose(F))
@@ -282,7 +254,7 @@ export class KalmanFilter3D {
     
     // Calculate and store WSE acceleration for plotting
     const kl = this.state[9], kd = this.state[10], roll = this.state[11]
-    const [aWSE_x, aWSE_y, aWSE_z] = this.calculateWingsuitAcceleration(vz, -vy, vx, kl, kd, roll)
+    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
     this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
 
     // Update wingsuit parameters from kalman acceleration,
@@ -343,48 +315,19 @@ export class KalmanFilter3D {
   }
 
   private updateWingsuitParameters(vN: number, vE: number, vD: number, accelN: number, accelE: number, accelD: number): void {
-    const gravity = 9.81
-    const accelDminusG = accelD - gravity
-
-    // Calculate acceleration due to drag (projection onto velocity)
     const vel = Math.sqrt(vN * vN + vE * vE + vD * vD)
     if (vel < 1.0) return // Skip update at low speeds
 
-    const proj = (accelN * vN + accelE * vE + accelDminusG * vD) / vel
+    // Use WSE function to calculate parameters
+    const [kl, kd, roll] = calculateWingsuitParameters(
+      vN, vE, vD, accelN, accelE, accelD,
+      this.state[9], this.state[10], this.state[11]
+    )
 
-    const dragN = proj * vN / vel
-    const dragE = proj * vE / vel
-    const dragD = proj * vD / vel
-    // Calculate correct sign for drag
-    const dragSign = -this.signum(dragN * vN + dragE * vE + dragD * vD)
-    const accelDrag = dragSign * Math.sqrt(dragN * dragN + dragE * dragE + dragD * dragD)
-
-    // Calculate acceleration due to lift (rejection from velocity)
-    const liftN = accelN - dragN
-    const liftE = accelE - dragE
-    const liftD = accelDminusG - dragD
-    const accelLift = Math.sqrt(liftN * liftN + liftE * liftE + liftD * liftD)
-
-    
-
-    // Calculate wingsuit coefficients
-    const kl = accelLift / gravity / vel / vel
-    const kd = accelDrag / gravity / vel / vel 
-    // Calculate roll angle
-    const smoothGroundspeed = Math.sqrt(vN * vN + vE * vE)
-    if (smoothGroundspeed > 1.0) {
-      const rollArg = (1 - accelD / gravity - kd * vel * vD) / (kl * smoothGroundspeed * vel)
-      if (Math.abs(rollArg) <= 1.0) {
-        const rollMagnitude = Math.acos(rollArg)
-        const rollSign = this.signum(liftN * -vE + liftE * vN)
-        const roll = rollSign * rollMagnitude
-
-        // Update state with new parameters
-        this.state[9] = kl
-        this.state[10] = kd
-        this.state[11] = roll
-      }
-    }
+    // Update state with new parameters
+    this.state[9] = kl
+    this.state[10] = kd
+    this.state[11] = roll
   }
 
   getState(): MotionState & { kl: number, kd: number, roll: number } {
