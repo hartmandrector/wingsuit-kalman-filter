@@ -971,12 +971,24 @@ class SpeedComparisonView extends PlotView {
           break
         case 'an':
           filterVel = mlocation.accelZ // North acceleration = ENU Z (state)
+          // Also include measured, WSE, and smoothed accelerations for bounds
+          if (mlocation.aMeasuredZ !== undefined) filterVelocities.push(mlocation.aMeasuredZ)
+          if (mlocation.aWSEZ !== undefined) filterVelocities.push(mlocation.aWSEZ)
+          if (mlocation.smoothAccelN !== undefined) filterVelocities.push(mlocation.smoothAccelN)
           break
         case 'ae':
           filterVel = mlocation.accelX // East acceleration = ENU X (state)
+          // Also include measured, WSE, and smoothed accelerations for bounds
+          if (mlocation.aMeasuredX !== undefined) filterVelocities.push(mlocation.aMeasuredX)
+          if (mlocation.aWSEX !== undefined) filterVelocities.push(mlocation.aWSEX)
+          if (mlocation.smoothAccelE !== undefined) filterVelocities.push(mlocation.smoothAccelE)
           break
         case 'ad':
           filterVel = mlocation.accelY ? -mlocation.accelY : undefined // Down acceleration = -ENU Y (state)
+          // Also include measured, WSE, and smoothed accelerations for bounds
+          if (mlocation.aMeasuredY !== undefined) filterVelocities.push(-mlocation.aMeasuredY)
+          if (mlocation.aWSEY !== undefined) filterVelocities.push(-mlocation.aWSEY)
+          if (mlocation.smoothAccelD !== undefined) filterVelocities.push(mlocation.smoothAccelD) // smoothAccelD is already in down direction
           break
       }
 
@@ -1502,6 +1514,46 @@ class SpeedComparisonView extends PlotView {
           }
         }
         this.ctx.stroke()
+        
+        // Draw smoothed acceleration as yellow line  
+        this.ctx.strokeStyle = '#ffaa00'
+        this.ctx.lineWidth = 2
+        this.ctx.beginPath()
+        
+        firstPoint = true
+        for (const point of filterData) {
+          if (!point.time) continue
+          
+          const mlocation = point as any
+          let smoothAccel: number | undefined
+          switch (this.selectedComponent) {
+            case 'an':
+              smoothAccel = mlocation.smoothAccelN
+              break
+            case 'ae':
+              smoothAccel = mlocation.smoothAccelE
+              break
+            case 'ad':
+              smoothAccel = mlocation.smoothAccelD // smoothAccelD is already in down direction
+              break
+          }
+          
+          if (smoothAccel === undefined) continue
+          
+          if (point.time < minViewTime || point.time > maxViewTime || 
+              smoothAccel < minViewSpeed || smoothAccel > maxViewSpeed) continue
+          
+          const x = margin + ((point.time - minViewTime) / viewTimeRange) * plotWidth
+          const y = margin + plotHeight - ((smoothAccel - minViewSpeed) / viewSpeedRange) * plotHeight
+          
+          if (firstPoint) {
+            this.ctx.moveTo(x, y)
+            firstPoint = false
+          } else {
+            this.ctx.lineTo(x, y)
+          }
+        }
+        this.ctx.stroke()
       }
     }
 
@@ -1552,6 +1604,12 @@ class SpeedComparisonView extends PlotView {
         this.ctx.fillRect(10, yOffset - 8, 15, 3)
         this.ctx.fillStyle = '#fff'
         this.ctx.fillText(`WSE ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
+        yOffset += 20
+        
+        this.ctx.fillStyle = '#ffaa00'
+        this.ctx.fillRect(10, yOffset - 8, 15, 3)
+        this.ctx.fillStyle = '#fff'
+        this.ctx.fillText(`Smoothed ${this.selectedComponent.toUpperCase()}`, 30, yOffset)
       }
     }
   }

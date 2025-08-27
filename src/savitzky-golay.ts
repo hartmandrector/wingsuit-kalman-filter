@@ -1,5 +1,6 @@
 import { MLocation } from "./types"
 import { dotMap } from "./vector"
+import { getSlope } from "./utils"
 
 // Legacy Point interface for backward compatibility
 interface Point {
@@ -321,6 +322,100 @@ function applySmoothingFilter(gpsData: MLocation[], coefficients: number[]): Smo
         velN: dotMap(slice, coefficients, velN),
         velE: dotMap(slice, coefficients, velE),
         velD: dotMap(slice, coefficients, velD)
+      })
+    }
+  }
+  
+  return result
+}
+
+export interface SmoothedAcceleration {
+  accelN: number  // North acceleration (m/s²)
+  accelE: number  // East acceleration (m/s²)
+  accelD: number  // Down acceleration (m/s²)
+}
+
+/**
+ * Calculate smoothed acceleration from smoothed velocities using linear regression
+ */
+export function calculateSmoothedAcceleration(gpsData: MLocation[], smoothedSpeeds: SmoothedSpeed[], windowSize: number = 7): SmoothedAcceleration[] {
+  const result: SmoothedAcceleration[] = []
+  const halfWindow = Math.floor(windowSize / 2)
+  
+  if (gpsData.length === 0 || smoothedSpeeds.length === 0) {
+    return result
+  }
+  
+  for (let i = 0; i < gpsData.length; i++) {
+    if (i < halfWindow || i >= gpsData.length - halfWindow) {
+      // For points near edges, use simple numerical difference
+      if (i === 0) {
+        // Forward difference for first point
+        if (gpsData.length > 1) {
+          const dt = (gpsData[1].time - gpsData[0].time) / 1000 // Convert ms to seconds
+          if (dt > 0) {
+            result.push({
+              accelN: (smoothedSpeeds[1].velN - smoothedSpeeds[0].velN) / dt,
+              accelE: (smoothedSpeeds[1].velE - smoothedSpeeds[0].velE) / dt,
+              accelD: (smoothedSpeeds[1].velD - smoothedSpeeds[0].velD) / dt
+            })
+          } else {
+            result.push({ accelN: 0, accelE: 0, accelD: 0 })
+          }
+        } else {
+          result.push({ accelN: 0, accelE: 0, accelD: 0 })
+        }
+      } else if (i === gpsData.length - 1) {
+        // Backward difference for last point
+        const dt = (gpsData[i].time - gpsData[i - 1].time) / 1000 // Convert ms to seconds
+        if (dt > 0) {
+          result.push({
+            accelN: (smoothedSpeeds[i].velN - smoothedSpeeds[i - 1].velN) / dt,
+            accelE: (smoothedSpeeds[i].velE - smoothedSpeeds[i - 1].velE) / dt,
+            accelD: (smoothedSpeeds[i].velD - smoothedSpeeds[i - 1].velD) / dt
+          })
+        } else {
+          result.push({ accelN: 0, accelE: 0, accelD: 0 })
+        }
+      } else {
+        // Central difference for other edge points
+        const dt = (gpsData[i + 1].time - gpsData[i - 1].time) / 1000 / 2 // Convert ms to seconds, divide by 2 for centered difference
+        if (dt > 0) {
+          result.push({
+            accelN: (smoothedSpeeds[i + 1].velN - smoothedSpeeds[i - 1].velN) / dt,
+            accelE: (smoothedSpeeds[i + 1].velE - smoothedSpeeds[i - 1].velE) / dt,
+            accelD: (smoothedSpeeds[i + 1].velD - smoothedSpeeds[i - 1].velD) / dt
+          })
+        } else {
+          result.push({ accelN: 0, accelE: 0, accelD: 0 })
+        }
+      }
+    } else {
+      // Use linear regression over the window for interior points
+      const start = i - halfWindow
+      const end = i + halfWindow + 1
+      const windowData = gpsData.slice(start, end)
+      const windowSpeeds = smoothedSpeeds.slice(start, end)
+      
+      // Create time-velocity pairs for regression
+      // Key fix: use relative time from the first point in window to avoid large numbers
+      const baseTime = windowData[0].time / 1000 // Convert to seconds
+      const timeVelocityPairs = windowData.map((point, idx) => ({
+        time: (point.time / 1000) - baseTime,  // Relative time in seconds from window start
+        velN: windowSpeeds[idx].velN,
+        velE: windowSpeeds[idx].velE,
+        velD: windowSpeeds[idx].velD
+      }))
+      
+      // Calculate acceleration as slope of velocity vs time using linear regression
+      const accelN = getSlope(timeVelocityPairs, d => d.time, d => d.velN)
+      const accelE = getSlope(timeVelocityPairs, d => d.time, d => d.velE)  
+      const accelD = getSlope(timeVelocityPairs, d => d.time, d => d.velD)
+      
+      result.push({
+        accelN: isFinite(accelN) ? accelN : 0,
+        accelE: isFinite(accelE) ? accelE : 0,
+        accelD: isFinite(accelD) ? accelD : 0
       })
     }
   }

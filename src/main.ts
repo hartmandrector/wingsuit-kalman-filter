@@ -17,7 +17,7 @@ import {
 } from './predict.js'
 import { setReference, latLonAltToENU } from './enu.js'
 import { MLocation, PlotSeries, PlotPoint } from './types.js'
-import { calculateSmoothedSpeeds } from './savitzky-golay.js'
+import { calculateSmoothedSpeeds, calculateSmoothedAcceleration } from './savitzky-golay.js'
 
 let currentGpsPoints: MLocation[] = []
 let currentPredictedPoints: PlotPoint[] = []
@@ -590,18 +590,30 @@ function processCSVData(csv: string): void {
   // Calculate smoothed GPS speeds (computed once when CSV is loaded)
   console.log('Calculating smoothed GPS speeds...')
   smoothedSpeeds = calculateSmoothedSpeeds(currentGpsPoints, 25,25,25) 
-    console.log('Smoothed speeds calculated:', smoothedSpeeds.length, 'points')
+  console.log('Smoothed speeds calculated:', smoothedSpeeds.length, 'points')
+  
+  // Calculate smoothed acceleration from smoothed velocities
+  console.log('Calculating smoothed accelerations...')
+  const smoothedAccelerations = calculateSmoothedAcceleration(currentGpsPoints, smoothedSpeeds)  // Using default window size of 7
+  console.log('Smoothed accelerations calculated:', smoothedAccelerations.length, 'points')
+  console.log('First 5 smoothed accelerations:', smoothedAccelerations.slice(0, 5))
+  console.log('Sample smoothed speeds (first 3):', smoothedSpeeds.slice(0, 3))
+  console.log('Sample original speeds (first 3):', currentGpsPoints.slice(0, 3).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
+  console.log('Sample time differences (first 3):', currentGpsPoints.slice(0, 3).map((p, i) => i > 0 ? (p.time - currentGpsPoints[i-1].time) / 1000 : 0))
   
   // Debug: Log first few smoothed speeds
  // console.log('First 5 smoothed speeds:', smoothedSpeeds.slice(0, 5))
  // console.log('First 5 original GPS speeds:', currentGpsPoints.slice(0, 5).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
 
-  // Add smoothed speeds to GPS points
+  // Add smoothed speeds and accelerations to GPS points
   currentGpsPoints = currentGpsPoints.map((point, index) => ({
     ...point,
     smoothVelN: smoothedSpeeds[index]?.velN,
     smoothVelE: smoothedSpeeds[index]?.velE,
-    smoothVelD: smoothedSpeeds[index]?.velD
+    smoothVelD: smoothedSpeeds[index]?.velD,
+    smoothAccelN: smoothedAccelerations[index]?.accelN,
+    smoothAccelE: smoothedAccelerations[index]?.accelE,
+    smoothAccelD: smoothedAccelerations[index]?.accelD
   }))
   
   // Debug: Log first few GPS points with smoothed speeds

@@ -17,6 +17,10 @@ export interface MLocation {
   smoothVelN?: number
   smoothVelE?: number
   smoothVelD?: number
+  // Smoothed GPS accelerations (calculated from smoothed velocities)
+  smoothAccelN?: number
+  smoothAccelE?: number
+  smoothAccelD?: number
 }
 
 export interface PlotPoint {
@@ -54,6 +58,10 @@ export interface PlotPoint {
   smoothVelN?: number  // Smoothed North velocity (m/s)
   smoothVelE?: number  // Smoothed East velocity (m/s)
   smoothVelD?: number  // Smoothed Down velocity (m/s)
+  // Smoothed GPS accelerations (calculated from smoothed velocities)
+  smoothAccelN?: number  // Smoothed North acceleration (m/s²)
+  smoothAccelE?: number  // Smoothed East acceleration (m/s²)
+  smoothAccelD?: number  // Smoothed Down acceleration (m/s²)
 }
 
 export interface PointStyle {

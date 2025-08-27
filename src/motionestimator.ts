@@ -122,9 +122,9 @@ export class MotionEstimator {
     const sinRoll = Math.sin(roll)
 
     // Calculate acceleration in NDE coordinates
-    const aN = (kl * v / groundSpeed * (vN * vD * cosRoll - vE * v * sinRoll) - kd * vN * v)
-    const aD = (g - kl * v * groundSpeed * cosRoll - kd * vD * v)
-    const aE = (kl * v / groundSpeed * (vE * vD * cosRoll + vN * v * sinRoll) - kd * vE * v)
+    const aN = g * (kl * v / groundSpeed * (vN * vD * cosRoll - vE * v * sinRoll) - kd * vN * v)
+    const aD = g * (1 - kl * v * groundSpeed * cosRoll - kd * vD * v)
+    const aE = g * (kl * v / groundSpeed * (vE * vD * cosRoll + vN * v * sinRoll) - kd * vE * v)
 
     // Convert back to ENU coordinates
     return [aE, -aD, aN]
