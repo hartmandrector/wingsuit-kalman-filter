@@ -1,6 +1,7 @@
 import { MLocation } from "./types"
 import { dotMap } from "./vector"
 import { getSlope } from "./utils"
+import { calculateWingsuitParameters, calculatesustainedspeeds } from './wse.js'
 
 // Legacy Point interface for backward compatibility
 interface Point {
@@ -418,6 +419,73 @@ export function calculateSmoothedAcceleration(gpsData: MLocation[], smoothedSpee
         accelD: isFinite(accelD) ? accelD : 0
       })
     }
+  }
+  
+  return result
+}
+
+// Sustained speeds interface for smooth sustained speed calculation results
+export interface SmoothSustainedSpeeds {
+  vxs: number  // Sustained horizontal speed (m/s)
+  vys: number  // Sustained vertical speed (m/s)
+  roll: number  // Roll angle (radians)
+}
+
+/**
+ * Calculate smooth sustained speeds from smooth velocities and accelerations
+ * @param gpsPoints Original GPS points with timing information
+ * @param smoothedSpeeds Smooth velocity data from calculateSmoothedSpeeds
+ * @param smoothedAccelerations Smooth acceleration data from calculateSmoothedAcceleration
+ * @returns Array of smooth sustained speeds for each point
+ */
+export function calculateSmoothSustainedSpeeds(
+  gpsPoints: MLocation[], 
+  smoothedSpeeds: ReturnType<typeof calculateSmoothedSpeeds>,
+  smoothedAccelerations: ReturnType<typeof calculateSmoothedAcceleration>
+): SmoothSustainedSpeeds[] {
+  const result: SmoothSustainedSpeeds[] = []
+  
+  for (let i = 0; i < gpsPoints.length; i++) {
+    const smoothSpeed = smoothedSpeeds[i]
+    const smoothAccel = smoothedAccelerations[i]
+    
+    // Default values if no data available
+    if (!smoothSpeed || !smoothAccel || 
+        smoothSpeed.velN === undefined || smoothSpeed.velE === undefined || smoothSpeed.velD === undefined ||
+        smoothAccel.accelN === undefined || smoothAccel.accelE === undefined || smoothAccel.accelD === undefined) {
+      result.push({ 
+        vxs: 0, 
+        vys: 0, 
+       
+        roll: 0
+      })
+      continue
+    }
+    
+    // Calculate wingsuit parameters from smooth data
+    const [kl, kd, roll] = calculateWingsuitParameters(
+      smoothSpeed.velN,   // North velocity
+      smoothSpeed.velE,   // East velocity  
+      smoothSpeed.velD,   // Down velocity
+      smoothAccel.accelN, // North acceleration
+      smoothAccel.accelE, // East acceleration
+      smoothAccel.accelD, // Down acceleration
+      0.01,               // Default kl fallback
+      0.01,               // Default kd fallback
+      0.0                 // Default roll fallback
+    )
+    
+    // Calculate sustained speeds from wingsuit parameters
+    const [vxs, vys] = calculatesustainedspeeds(kl, kd)
+    
+    
+    
+    result.push({ 
+      vxs, 
+      vys, 
+     
+      roll
+    })
   }
   
   return result

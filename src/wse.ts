@@ -112,3 +112,8 @@ export function calculateWingsuitParameters(
 
   return [kl, kd, roll]
 }
+
+export function calculatesustainedspeeds(kl:number, kd:number){
+    const denom = Math.pow(kl*kl+kd*kd,.75)
+    return [kl/denom, kd/denom]
+}

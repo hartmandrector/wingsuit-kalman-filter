@@ -17,7 +17,7 @@ import {
 } from './predict.js'
 import { setReference, latLonAltToENU } from './enu.js'
 import { MLocation, PlotSeries, PlotPoint } from './types.js'
-import { calculateSmoothedSpeeds, calculateSmoothedAcceleration } from './savitzky-golay.js'
+import { calculateSmoothedSpeeds, calculateSmoothedAcceleration, calculateSmoothSustainedSpeeds } from './savitzky-golay.js'
 
 let currentGpsPoints: MLocation[] = []
 let currentPredictedPoints: PlotPoint[] = []
@@ -601,6 +601,12 @@ function processCSVData(csv: string): void {
   console.log('Sample original speeds (first 3):', currentGpsPoints.slice(0, 3).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
   console.log('Sample time differences (first 3):', currentGpsPoints.slice(0, 3).map((p, i) => i > 0 ? (p.time - currentGpsPoints[i-1].time) / 1000 : 0))
   
+  // Calculate smooth sustained speeds
+  console.log('Calculating smooth sustained speeds...')
+  const smoothSustainedSpeeds = calculateSmoothSustainedSpeeds(currentGpsPoints, smoothedSpeeds, smoothedAccelerations)
+  console.log('Smooth sustained speeds calculated:', smoothSustainedSpeeds.length, 'points')
+  console.log('First 5 smooth sustained speeds:', smoothSustainedSpeeds.slice(0, 5))
+  
   // Debug: Log first few smoothed speeds
  // console.log('First 5 smoothed speeds:', smoothedSpeeds.slice(0, 5))
  // console.log('First 5 original GPS speeds:', currentGpsPoints.slice(0, 5).map(p => ({ velN: p.velN, velE: p.velE, velD: p.velD })))
@@ -613,12 +619,15 @@ function processCSVData(csv: string): void {
     smoothVelD: smoothedSpeeds[index]?.velD,
     smoothAccelN: smoothedAccelerations[index]?.accelN,
     smoothAccelE: smoothedAccelerations[index]?.accelE,
-    smoothAccelD: smoothedAccelerations[index]?.accelD
+    smoothAccelD: smoothedAccelerations[index]?.accelD,
+    smoothVxs: smoothSustainedSpeeds[index]?.vxs,
+    smoothVys: smoothSustainedSpeeds[index]?.vys,
+    smoothRoll: smoothSustainedSpeeds[index]?.roll
   }))
   
   // Debug: Log first few GPS points with smoothed speeds
 //  console.log('First 3 GPS points with smoothed speeds:', currentGpsPoints.slice(0, 3).map(p => ({
- //   original: { velN: p.velN, velE: p.velE, velD: p.velD },
+//    original: { velN: p.velN, velE: p.velE, velD: p.velD },
  //   smoothed: { velN: p.smoothVelN, velE: p.smoothVelE, velD: p.smoothVelD }
  // })))
 

@@ -575,6 +575,25 @@ class PolarView extends PlotView {
     return { x, y }
   }
 
+  // Helper method to get smooth sustained speed screen coordinates
+  getSmoothSustainedSpeedScreenCoords(point: PlotPoint): { x: number, y: number } | null {
+    if (point.smoothVxs === undefined || point.smoothVys === undefined) return null
+    
+    const margin = 60
+    const plotWidth = this.canvas!.width - 2 * margin
+    const plotHeight = this.canvas!.height - 2 * margin
+    
+    // Use vxs directly as horizontal speed and -vys as vertical speed
+    const horizontalSpeed = point.smoothVxs
+    const verticalSpeed = -point.smoothVys  // Negate vys for plotting
+    
+    // Convert to screen coordinates
+    const x = margin + (horizontalSpeed / this.maxHorizontalSpeed) * plotWidth
+    const y = margin + (this.maxVerticalSpeed - verticalSpeed) / (this.maxVerticalSpeed - this.minVerticalSpeed) * plotHeight
+    
+    return { x, y }
+  }
+
   public renderPlot(): void {
     if (!this.originalBounds || !this.canvas || !this.ctx) return
 
@@ -769,6 +788,38 @@ class PolarView extends PlotView {
     
     //console.log('Total smoothed speed points drawn:', smoothedSpeedCount)
 
+    // Draw smooth sustained speeds as small purple points
+    this.ctx.fillStyle = '#ff33eeff'  // Purple color
+    let smoothSustainedSpeedCount = 0
+    
+    for (const plotSeries of this.allSeries) {
+      for (const point of plotSeries.data) {
+        const sustainedPos = this.getSmoothSustainedSpeedScreenCoords(point)
+        
+        if (sustainedPos && 
+            sustainedPos.x >= margin && sustainedPos.x <= margin + plotWidth && 
+            sustainedPos.y >= margin && sustainedPos.y <= margin + plotHeight) {
+          
+          smoothSustainedSpeedCount++
+          
+          this.ctx.beginPath()
+          
+          // Highlight hovered point for smooth sustained speeds too
+          if (this.hoveredPoint === point) {
+            this.ctx.strokeStyle = '#ffffff'
+            this.ctx.lineWidth = 2
+            this.ctx.arc(sustainedPos.x, sustainedPos.y, 3, 0, 2 * Math.PI)
+            this.ctx.stroke()
+            this.ctx.beginPath()
+            this.ctx.fillStyle = '#ff33eeff'
+          }
+          
+          this.ctx.arc(sustainedPos.x, sustainedPos.y, 1.5, 0, 2 * Math.PI)
+          this.ctx.fill()
+        }
+      }
+    }
+
     // Draw legend and info
     this.ctx.fillStyle = '#fff'
     this.ctx.font = '12px system-ui'
@@ -806,6 +857,15 @@ class PolarView extends PlotView {
       this.ctx.fillRect(10, yOffset - 8, 8, 8)
       this.ctx.fillStyle = '#fff'
       this.ctx.fillText(`Smoothed GPS Speeds: ${smoothedSpeedCount}`, 25, yOffset)
+      yOffset += 15
+    }
+    
+    // Smooth sustained speeds info
+    if (smoothSustainedSpeedCount > 0) {
+      this.ctx.fillStyle = '#9933ff'
+      this.ctx.fillRect(10, yOffset - 8, 8, 8)
+      this.ctx.fillStyle = '#fff'
+      this.ctx.fillText(`Smooth Sustained Speeds: ${smoothSustainedSpeedCount}`, 25, yOffset)
       yOffset += 15
     }
   }
@@ -846,6 +906,17 @@ class PolarView extends PlotView {
         
         if (smoothedDistance < hoverRadius && smoothedDistance < minDistance) {
           minDistance = smoothedDistance
+          nearestPoint = point
+        }
+      }
+      
+      // Also check smooth sustained speed points
+      const smoothSustainedPos = this.getSmoothSustainedSpeedScreenCoords(point)
+      if (smoothSustainedPos) {
+        const smoothSustainedDistance = Math.sqrt((smoothSustainedPos.x - screenX) ** 2 + (smoothSustainedPos.y - screenY) ** 2)
+        
+        if (smoothSustainedDistance < hoverRadius && smoothSustainedDistance < minDistance) {
+          minDistance = smoothSustainedDistance
           nearestPoint = point
         }
       }
@@ -1134,7 +1205,7 @@ class SpeedComparisonView extends PlotView {
       this.maxSpeed = bounds.maxSpeed
 
       // Add some padding to speed range
-      const speedPadding = (this.maxSpeed - this.minSpeed) * 0.1
+      const speedPadding = this.maxSpeed - this.minSpeed
       this.minSpeed -= speedPadding
       this.maxSpeed += speedPadding
       

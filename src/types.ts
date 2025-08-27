@@ -21,6 +21,10 @@ export interface MLocation {
   smoothAccelN?: number
   smoothAccelE?: number
   smoothAccelD?: number
+  // Smooth sustained speeds (calculated from smooth velocities and accelerations)
+  smoothSustainedSpeed?: number
+  smoothGlideRatio?: number
+  smoothLiftToDragRatio?: number
 }
 
 export interface PlotPoint {
@@ -62,6 +66,10 @@ export interface PlotPoint {
   smoothAccelN?: number  // Smoothed North acceleration (m/s²)
   smoothAccelE?: number  // Smoothed East acceleration (m/s²)
   smoothAccelD?: number  // Smoothed Down acceleration (m/s²)
+  // Smooth sustained speeds (calculated from smooth velocities and accelerations)
+  smoothVxs?: number  // Smooth sustained horizontal speed (m/s)
+  smoothVys?: number  // Smooth sustained vertical speed (m/s)
+  smoothRoll?: number  // Smooth sustained roll angle (radians)
 }
 
 export interface PointStyle {
