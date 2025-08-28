@@ -1,6 +1,6 @@
 import './style.css'
 import { parseCSV } from './csvParser.js'
-import { plotData, speedComparisonView } from './plotter.js'
+import { plotData } from './plotter-main.js'
 import { 
   generatePredictedPoints, 
   setAlpha, 
@@ -506,12 +506,27 @@ function regeneratePlot(): void {
     {
       name: 'GPS Points',
       data: currentGpsPoints,
-      style: { color: '#646cff', radius: 4 }
+      style: { color: '#ff0000', radius: 4 }
     },
     {
-      name: 'Predicted Points',
+      name: 'Smooth Position',
       data: currentPredictedPoints,
-      style: { color: '#ff4444', radius: 2 }
+      style: { color: '#00ff00', radius: 2 }
+    },
+    {
+      name: 'Smooth Velocity',
+      data: currentPredictedPoints,
+      style: { color: '#0000ff', radius: 2 }
+    },
+    {
+      name: 'Smooth Acceleration',
+      data: currentPredictedPoints,
+      style: { color: '#ff00ff', radius: 2 }
+    },
+    {
+      name: 'Smooth Sustained Speeds',
+      data: currentGpsPoints.filter(p => (p as any).smoothVxs !== undefined && (p as any).smoothVys !== undefined),
+      style: { color: '#800080', radius: 4 }
     }
   ]
   
@@ -530,14 +545,37 @@ function initialPlot(): void {
     {
       name: 'GPS Points',
       data: currentGpsPoints,
-      style: { color: '#646cff', radius: 4 }
+      style: { color: '#ff0000', radius: 4 }
     },
     {
-      name: 'Predicted Points',
+      name: 'Smooth Position',
       data: currentPredictedPoints,
-      style: { color: '#ff4444', radius: 2 }
+      style: { color: '#00ff00', radius: 2 }
+    },
+    {
+      name: 'Smooth Velocity',
+      data: currentPredictedPoints,
+      style: { color: '#0000ff', radius: 2 }
+    },
+    {
+      name: 'Smooth Acceleration',
+      data: currentPredictedPoints,
+      style: { color: '#ff00ff', radius: 2 }
+    },
+    {
+      name: 'Smooth Sustained Speeds',
+      data: currentGpsPoints.filter(p => (p as any).smoothVxs !== undefined && (p as any).smoothVys !== undefined),
+      style: { color: '#800080', radius: 4 }
     }
   ]
+  
+  console.log('Initial plot data:', {
+    gpsPoints: series[0].data.length,
+    predictedPoints: series[1].data.length,
+    sustainedSpeeds: series[4].data.length,
+    firstGpsPoint: series[0].data[0],
+    firstPredictedPoint: series[1].data[0]
+  })
   
   // Reset zoom for new data
   plotData(series, false)
@@ -645,8 +683,8 @@ function processCSVData(csv: string): void {
   // Show quad view container
   quadViewContainer.classList.add('show')
   
-  // Set up speed component selector
-  setupSpeedSelector()
+  // Set up speed component selector - no longer needed
+  // setupSpeedSelector()
   
   // Generate initial plot (resets zoom)
   initialPlot()
@@ -667,18 +705,4 @@ async function loadDefaultFile(): Promise<void> {
 // Load default file when page loads
 loadDefaultFile()
 
-// Set up speed component selector
-function setupSpeedSelector() {
-  const selector = document.getElementById('speed-component-selector') as HTMLSelectElement
-  if (selector) {
-    selector.addEventListener('change', () => {
-      const selectedComponent = selector.value as 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad'
-      speedComparisonView.setSelectedComponent(selectedComponent)
-    })
-  }
-}
-
-// Initialize speed selector when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  setupSpeedSelector()
-})
+// Set up speed component selector - removed as it's no longer needed with modular views
