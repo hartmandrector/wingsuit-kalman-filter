@@ -2,7 +2,7 @@ import { PlotView } from './plot-view-base.js'
 import { PlotSeries, PlotPoint } from './types.js'
 
 export class SpeedComparisonView extends PlotView {
-  private selectedComponent: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' = 'vn'
+  private selectedComponent: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll' = 'vn'
   private minTime: number = 0
   private maxTime: number = 0
   private minSpeed: number = 0
@@ -108,7 +108,8 @@ export class SpeedComparisonView extends PlotView {
         case 'an':
         case 'ae':
         case 'ad':
-          // Acceleration components are only available in filter data, not GPS data
+        case 'roll':
+          // Acceleration components and roll are only available in filter data, not GPS data
           vel = undefined
           smoothVel = undefined
           break
@@ -153,6 +154,16 @@ export class SpeedComparisonView extends PlotView {
           if (mlocation.aMeasuredY !== undefined) filterVelocities.push(-mlocation.aMeasuredY)
           if (mlocation.aWSEY !== undefined) filterVelocities.push(-mlocation.aWSEY)
           if (mlocation.smoothAccelD !== undefined) filterVelocities.push(mlocation.smoothAccelD) // smoothAccelD is already in down direction
+          break
+        case 'roll':
+          // Convert roll from radians to degrees and ensure -180 to 180 range
+          if (mlocation.roll !== undefined) {
+            let rollDeg = mlocation.roll * 180 / Math.PI
+            // Normalize to -180 to 180 range
+            while (rollDeg > 180) rollDeg -= 360
+            while (rollDeg < -180) rollDeg += 360
+            filterVel = rollDeg
+          }
           break
       }
 
@@ -289,6 +300,17 @@ export class SpeedComparisonView extends PlotView {
       case 'ad':
         value = (mlocation.accelY ? -mlocation.accelY : 0) || (mlocation.aMeasuredY ? -mlocation.aMeasuredY : 0) || 0
         break
+      case 'roll':
+        if (mlocation.roll !== undefined) {
+          let rollDeg = mlocation.roll * 180 / Math.PI
+          // Normalize to -180 to 180 range
+          while (rollDeg > 180) rollDeg -= 360
+          while (rollDeg < -180) rollDeg += 360
+          value = rollDeg
+        } else {
+          value = 0
+        }
+        break
     }
     
     const y = margin + plotHeight - ((value - minViewSpeed) / (maxViewSpeed - minViewSpeed)) * plotHeight
@@ -296,7 +318,7 @@ export class SpeedComparisonView extends PlotView {
     return { x, y }
   }
 
-  setSelectedComponent(component: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad') {
+  setSelectedComponent(component: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll') {
     this.selectedComponent = component
     this.boundsInitialized = false
     this.renderPlot()
@@ -373,8 +395,20 @@ export class SpeedComparisonView extends PlotView {
     // Y-axis label (rotated)
     const componentName = this.selectedComponent.toUpperCase()
     const isAcceleration = this.selectedComponent.startsWith('a')
-    const units = isAcceleration ? '(m/s²)' : '(m/s)'
-    const label = isAcceleration ? `${componentName} Acceleration ${units}` : `${componentName} Speed ${units}`
+    const isRoll = this.selectedComponent === 'roll'
+    let units: string
+    let label: string
+    
+    if (isRoll) {
+      units = '(deg)'
+      label = `Roll Angle ${units}`
+    } else if (isAcceleration) {
+      units = '(m/s²)'
+      label = `${componentName} Acceleration ${units}`
+    } else {
+      units = '(m/s)'
+      label = `${componentName} Speed ${units}`
+    }
     
     this.ctx.save()
     this.ctx.translate(15, margin + plotHeight / 2)
@@ -400,27 +434,35 @@ export class SpeedComparisonView extends PlotView {
     const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
     const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
 
-    // Draw GPS velocities (red)
-    this.drawDataSeries(gpsData, '#ff4444', 'gps', margin, plotWidth, plotHeight, 
-      minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
-
-    // Draw smoothed GPS velocities (blue)
-    this.drawDataSeries(gpsData, '#0099ff', 'smooth', margin, plotWidth, plotHeight, 
-      minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
-
-    // Draw filter data (green)
-    if (filterData.length > 0) {
-      this.drawDataSeries(filterData, '#00ff44', 'filter', margin, plotWidth, plotHeight, 
+    // For roll angle, only draw filter data (green)
+    if (this.selectedComponent === 'roll') {
+      if (filterData.length > 0) {
+        this.drawDataSeries(filterData, '#00ff44', 'filter', margin, plotWidth, plotHeight, 
+          minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+      }
+    } else {
+      // Draw GPS velocities (red)
+      this.drawDataSeries(gpsData, '#ff4444', 'gps', margin, plotWidth, plotHeight, 
         minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
 
-      // For accelerations, draw additional series
-      if (this.selectedComponent.startsWith('a')) {
-        this.drawDataSeries(filterData, '#ff8800', 'measured', margin, plotWidth, plotHeight, 
+      // Draw smoothed GPS velocities (blue)
+      this.drawDataSeries(gpsData, '#0099ff', 'smooth', margin, plotWidth, plotHeight, 
+        minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+
+      // Draw filter data (green)
+      if (filterData.length > 0) {
+        this.drawDataSeries(filterData, '#00ff44', 'filter', margin, plotWidth, plotHeight, 
           minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
-        this.drawDataSeries(filterData, '#8800ff', 'wse', margin, plotWidth, plotHeight, 
-          minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
-        this.drawDataSeries(filterData, '#ffaa00', 'smoothAccel', margin, plotWidth, plotHeight, 
-          minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+
+        // For accelerations, draw additional series
+        if (this.selectedComponent.startsWith('a')) {
+          this.drawDataSeries(filterData, '#ff8800', 'measured', margin, plotWidth, plotHeight, 
+            minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+          this.drawDataSeries(filterData, '#8800ff', 'wse', margin, plotWidth, plotHeight, 
+            minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+          this.drawDataSeries(filterData, '#ffaa00', 'smoothAccel', margin, plotWidth, plotHeight, 
+            minViewTime, maxViewTime, minViewSpeed, maxViewSpeed, viewTimeRange, viewSpeedRange)
+        }
       }
     }
 
@@ -491,6 +533,15 @@ export class SpeedComparisonView extends PlotView {
           case 'an': return mlocation.accelZ
           case 'ae': return mlocation.accelX
           case 'ad': return mlocation.accelY ? -mlocation.accelY : undefined
+          case 'roll': 
+            if (mlocation.roll !== undefined) {
+              let rollDeg = mlocation.roll * 180 / Math.PI
+              // Normalize to -180 to 180 range
+              while (rollDeg > 180) rollDeg -= 360
+              while (rollDeg < -180) rollDeg += 360
+              return rollDeg
+            }
+            return undefined
           default: return undefined
         }
       case 'measured':
@@ -526,11 +577,15 @@ export class SpeedComparisonView extends PlotView {
     const lineHeight = 20
 
     const isAcceleration = this.selectedComponent.startsWith('a')
+    const isRoll = this.selectedComponent === 'roll'
     const hasFilterData = this.allSeries.length > 1
 
     let legendItems = []
     
-    if (!isAcceleration) {
+    if (isRoll) {
+      // For roll, only show one series
+      legendItems = [{ color: '#00ff44', label: 'Roll Angle' }]
+    } else if (!isAcceleration) {
       legendItems = [
         { color: '#ff4444', label: 'GPS Velocity' },
         { color: '#0099ff', label: 'Smoothed GPS' }
@@ -609,28 +664,36 @@ export class SpeedComparisonView extends PlotView {
     let tooltipLines = [`Time: ${timeStr}`]
     
     const isAcceleration = this.selectedComponent.startsWith('a')
-    const units = isAcceleration ? 'm/s²' : 'm/s'
+    const isRoll = this.selectedComponent === 'roll'
     const componentName = this.selectedComponent.toUpperCase()
     
-    // Add relevant values based on component type
-    if (!isAcceleration) {
-      const gpsVal = this.getValueForType(this.hoveredPoint, 'gps')
-      const smoothVal = this.getValueForType(this.hoveredPoint, 'smooth')
-      const filterVal = this.getValueForType(this.hoveredPoint, 'filter')
-      
-      if (gpsVal !== undefined) tooltipLines.push(`GPS ${componentName}: ${gpsVal.toFixed(2)} ${units}`)
-      if (smoothVal !== undefined) tooltipLines.push(`Smooth ${componentName}: ${smoothVal.toFixed(2)} ${units}`)
-      if (filterVal !== undefined) tooltipLines.push(`Filter ${componentName}: ${filterVal.toFixed(2)} ${units}`)
+    if (isRoll) {
+      // For roll, only show the roll angle
+      const rollVal = this.getValueForType(this.hoveredPoint, 'filter')
+      if (rollVal !== undefined) tooltipLines.push(`Roll Angle: ${rollVal.toFixed(1)}°`)
     } else {
-      const filterVal = this.getValueForType(this.hoveredPoint, 'filter')
-      const measuredVal = this.getValueForType(this.hoveredPoint, 'measured')
-      const wseVal = this.getValueForType(this.hoveredPoint, 'wse')
-      const smoothVal = this.getValueForType(this.hoveredPoint, 'smoothAccel')
+      // Add relevant values based on component type
+      const units = isAcceleration ? 'm/s²' : 'm/s'
       
-      if (filterVal !== undefined) tooltipLines.push(`Filter ${componentName}: ${filterVal.toFixed(2)} ${units}`)
-      if (measuredVal !== undefined) tooltipLines.push(`Measured ${componentName}: ${measuredVal.toFixed(2)} ${units}`)
-      if (wseVal !== undefined) tooltipLines.push(`WSE ${componentName}: ${wseVal.toFixed(2)} ${units}`)
-      if (smoothVal !== undefined) tooltipLines.push(`Smooth ${componentName}: ${smoothVal.toFixed(2)} ${units}`)
+      if (!isAcceleration) {
+        const gpsVal = this.getValueForType(this.hoveredPoint, 'gps')
+        const smoothVal = this.getValueForType(this.hoveredPoint, 'smooth')
+        const filterVal = this.getValueForType(this.hoveredPoint, 'filter')
+        
+        if (gpsVal !== undefined) tooltipLines.push(`GPS ${componentName}: ${gpsVal.toFixed(2)} ${units}`)
+        if (smoothVal !== undefined) tooltipLines.push(`Smooth ${componentName}: ${smoothVal.toFixed(2)} ${units}`)
+        if (filterVal !== undefined) tooltipLines.push(`Filter ${componentName}: ${filterVal.toFixed(2)} ${units}`)
+      } else {
+        const filterVal = this.getValueForType(this.hoveredPoint, 'filter')
+        const measuredVal = this.getValueForType(this.hoveredPoint, 'measured')
+        const wseVal = this.getValueForType(this.hoveredPoint, 'wse')
+        const smoothVal = this.getValueForType(this.hoveredPoint, 'smoothAccel')
+        
+        if (filterVal !== undefined) tooltipLines.push(`Filter ${componentName}: ${filterVal.toFixed(2)} ${units}`)
+        if (measuredVal !== undefined) tooltipLines.push(`Measured ${componentName}: ${measuredVal.toFixed(2)} ${units}`)
+        if (wseVal !== undefined) tooltipLines.push(`WSE ${componentName}: ${wseVal.toFixed(2)} ${units}`)
+        if (smoothVal !== undefined) tooltipLines.push(`Smooth ${componentName}: ${smoothVal.toFixed(2)} ${units}`)
+      }
     }
     
     // Draw tooltip
