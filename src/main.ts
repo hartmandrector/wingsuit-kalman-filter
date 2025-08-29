@@ -13,10 +13,16 @@ import {
   setKalmanProcessNoiseAcceleration,
   setKalmanMeasurementNoisePosition,
   setKalmanMeasurementNoiseVelocity,
-  signedQuadraticScale
+  setCalculationMethod,
+  getCalculationMethod,
+  signedQuadraticScale,
+  signedQuadraticScaleVelocityDisplay,
+  quadraticScaleDisplay,
+  quadraticScaleAccelerationDisplay
 } from './predict.js'
 import { setReference, latLonAltToENU } from './enu.js'
 import { MLocation, PlotSeries, PlotPoint } from './types.js'
+import { CalculationMethod } from './motionestimator.js'
 import { calculateSmoothedSpeeds, calculateSmoothedAcceleration, calculateSmoothSustainedSpeeds } from './savitzky-golay.js'
 
 let currentGpsPoints: MLocation[] = []
@@ -34,6 +40,8 @@ if (dropZone && fileInput) {
 // Setup filter type switcher
 const motionEstimatorRadio = document.getElementById('motion-estimator') as HTMLInputElement | null
 const kalmanFilterRadio = document.getElementById('kalman-filter') as HTMLInputElement | null
+const trapezoidalMethodRadio = document.getElementById('trapezoidal-method') as HTMLInputElement | null
+const standardMethodRadio = document.getElementById('standard-method') as HTMLInputElement | null
 const motionEstimatorControls = document.getElementById('motion-estimator-controls') as HTMLElement | null
 const kalmanFilterControls = document.getElementById('kalman-filter-controls') as HTMLElement | null
 
@@ -50,6 +58,21 @@ function updateControlsVisibility(): void {
   }
 }
 
+function updateCalculationMethodRadioButtons(): void {
+  const currentMethod = getCalculationMethod()
+  if (trapezoidalMethodRadio && standardMethodRadio) {
+    if (currentMethod === CalculationMethod.TRAPEZOIDAL) {
+      trapezoidalMethodRadio.checked = true
+    } else {
+      standardMethodRadio.checked = true
+    }
+  }
+}
+
+// Initialize UI state
+updateControlsVisibility()
+updateCalculationMethodRadioButtons()
+
 if (motionEstimatorRadio && kalmanFilterRadio) {
   motionEstimatorRadio.addEventListener('change', () => {
     if (motionEstimatorRadio.checked) {
@@ -65,6 +88,27 @@ if (motionEstimatorRadio && kalmanFilterRadio) {
     if (kalmanFilterRadio.checked) {
       setFilterType('kalman')
       updateControlsVisibility()
+      if (currentGpsPoints.length > 0) {
+        regeneratePlot()
+      }
+    }
+  })
+}
+
+// Setup calculation method radio buttons
+if (trapezoidalMethodRadio && standardMethodRadio) {
+  trapezoidalMethodRadio.addEventListener('change', () => {
+    if (trapezoidalMethodRadio.checked) {
+      setCalculationMethod(CalculationMethod.TRAPEZOIDAL)
+      if (currentGpsPoints.length > 0) {
+        regeneratePlot()
+      }
+    }
+  })
+
+  standardMethodRadio.addEventListener('change', () => {
+    if (standardMethodRadio.checked) {
+      setCalculationMethod(CalculationMethod.STANDARD)
       if (currentGpsPoints.length > 0) {
         regeneratePlot()
       }
@@ -291,11 +335,6 @@ function generateCSVContent(gpsPoints: MLocation[], predictedPoints: PlotPoint[]
   return csvContent
 }
 
-// Helper function for quadratic scaling display
-function quadraticScale(value: number): number {
-  return 0.0001 + (value * value) * (25 - 0.0001)
-}
-
 // Setup alpha sliders (Motion Estimator)
 const alphaSlider = document.getElementById('alpha-slider') as HTMLInputElement | null
 const alphaValue = document.getElementById('alpha-value') as HTMLElement | null
@@ -362,7 +401,7 @@ if (kalmanQPositionSlider && kalmanQPositionValue) {
   kalmanQPositionSlider.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement
     const value = parseFloat(target.value)
-    const scaledValue = quadraticScale(value)
+    const scaledValue = quadraticScaleDisplay(value)
     kalmanQPositionValue.textContent = scaledValue.toFixed(4)
     setKalmanProcessNoisePosition(value)
     
@@ -376,7 +415,7 @@ if (kalmanQVelocitySlider && kalmanQVelocityValue) {
   kalmanQVelocitySlider.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement
     const value = parseFloat(target.value)
-    const scaledValue = quadraticScale(value)
+    const scaledValue = quadraticScaleDisplay(value)
     kalmanQVelocityValue.textContent = scaledValue.toFixed(4)
     setKalmanProcessNoiseVelocity(value)
     
@@ -390,7 +429,7 @@ if (kalmanQAccelerationSlider && kalmanQAccelerationValue) {
   kalmanQAccelerationSlider.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement
     const value = parseFloat(target.value)
-    const scaledValue = quadraticScale(value)
+    const scaledValue = quadraticScaleAccelerationDisplay(value)
     kalmanQAccelerationValue.textContent = scaledValue.toFixed(4)
     setKalmanProcessNoiseAcceleration(value)
     
@@ -418,7 +457,7 @@ if (kalmanRVelocitySlider && kalmanRVelocityValue) {
   kalmanRVelocitySlider.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement
     const value = parseFloat(target.value)
-    const scaledValue = signedQuadraticScale(value)
+    const scaledValue = signedQuadraticScaleVelocityDisplay(value)
     kalmanRVelocityValue.textContent = scaledValue.toFixed(2)
     setKalmanMeasurementNoiseVelocity(value)
     

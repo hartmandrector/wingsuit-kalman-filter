@@ -69,6 +69,17 @@
             </div>
           </div>
 
+          <!-- Calculation Method Switcher -->
+          <div id="calculation-method-control">
+            <label>Calculation Method:</label>
+            <div id="calculation-method-switch">
+              <input type="radio" id="trapezoidal-method" name="calculation-method" value="trapezoidal" checked>
+              <label for="trapezoidal-method">Trapezoidal</label>
+              <input type="radio" id="standard-method" name="calculation-method" value="standard">
+              <label for="standard-method">Standard</label>
+            </div>
+          </div>
+
           <!-- Motion Estimator Controls -->
           <div id="motion-estimator-controls">
             <div id="alpha-control">
@@ -98,7 +109,7 @@
             </div>
             <div id="kalman-q-acceleration-control">
               <label for="kalman-q-acceleration-slider">Acceleration: <span id="kalman-q-acceleration-value">10.00</span></label>
-              <input type="range" id="kalman-q-acceleration-slider" min="0" max="1" step="0.01" value="0.89">
+              <input type="range" id="kalman-q-acceleration-slider" min="0" max="1" step="0.01" value="0.14">
             </div>
             
             <h4>Measurement Noise (R Matrix)</h4>

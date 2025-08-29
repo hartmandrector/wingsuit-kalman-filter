@@ -26,11 +26,40 @@ export class SpeedComparisonView extends PlotView {
   }
 
   public plotData(series: PlotSeries[], preserveZoom: boolean = false): void {
+    // Store old bounds if preserving zoom
+    let oldBounds: any = undefined
+    if (preserveZoom && this.boundsInitialized) {
+      oldBounds = {
+        minTime: this.minTime,
+        maxTime: this.maxTime,
+        minSpeed: this.minSpeed,
+        maxSpeed: this.maxSpeed
+      }
+    }
+    
     // Call parent plotData first
     super.plotData(series, preserveZoom)
     
-    // Reset bounds initialization flag if not preserving zoom
-    if (!preserveZoom) {
+    // For speed comparison view, we need to handle bounds differently
+    if (preserveZoom && oldBounds && this.boundsInitialized) {
+      // Force recalculation to get new bounds
+      const newBounds = this.calculateBoundsFromSeries(this.allSeries)
+      
+      // Calculate scaling factors
+      const timeScale = (newBounds.maxTime - newBounds.minTime) / (oldBounds.maxTime - oldBounds.minTime)
+      const speedScale = (newBounds.maxSpeed - newBounds.minSpeed) / (oldBounds.maxSpeed - oldBounds.minSpeed)
+      
+      // Use the new bounds but they'll be adjusted by zoom
+      this.minTime = newBounds.minTime
+      this.maxTime = newBounds.maxTime
+      this.minSpeed = newBounds.minSpeed
+      this.maxSpeed = newBounds.maxSpeed
+      
+      // Add some padding to speed range
+      const speedPadding = (this.maxSpeed - this.minSpeed) * 0.1
+      this.minSpeed -= speedPadding
+      this.maxSpeed += speedPadding
+    } else if (!preserveZoom) {
       this.boundsInitialized = false
     }
   }

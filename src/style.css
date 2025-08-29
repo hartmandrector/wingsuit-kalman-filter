@@ -359,6 +359,21 @@ h1 {
   cursor: pointer;
 }
 
+#calculation-method-switch {
+  display: flex;
+  gap: 15px;
+  margin-top: 8px;
+}
+
+#calculation-method-switch input[type="radio"] {
+  margin-right: 5px;
+}
+
+#calculation-method-switch label {
+  font-size: 14px;
+  cursor: pointer;
+}
+
 #motion-estimator-controls,
 #kalman-filter-controls {
   margin-bottom: 15px;

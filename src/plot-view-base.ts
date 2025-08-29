@@ -62,9 +62,38 @@ export abstract class PlotView {
     // Store series data
     this.allSeries = series
     this.allPoints = series.flatMap(s => s.data)
-    this.originalBounds = this.calculateBounds(this.allPoints)
+    
+    // Calculate new bounds
+    const newBounds = this.calculateBounds(this.allPoints)
+    
+    if (preserveZoom && this.originalBounds) {
+      // When preserving zoom, adjust zoom/pan to maintain the same view with new bounds
+      const oldBounds = this.originalBounds
+      
+      // Calculate scaling factors to adjust zoom and pan (with safety checks)
+      const xScale = (newBounds.maxX - newBounds.minX) / Math.max(oldBounds.maxX - oldBounds.minX, 1e-10)
+      const yScale = (newBounds.maxY - newBounds.minY) / Math.max(oldBounds.maxY - oldBounds.minY, 1e-10)
+      
+      // Only adjust if scales are reasonable (not too extreme)
+      if (isFinite(xScale) && isFinite(yScale) && xScale > 0.01 && xScale < 100 && yScale > 0.01 && yScale < 100) {
+        // Calculate offset changes
+        const xOffset = (newBounds.minX + newBounds.maxX) / 2 - (oldBounds.minX + oldBounds.maxX) / 2
+        const yOffset = (newBounds.minY + newBounds.maxY) / 2 - (oldBounds.minY + oldBounds.maxY) / 2
+        
+        // Adjust zoom and pan to maintain the same visual area
+        this.zoom = this.zoom / Math.max(xScale, yScale) // Use max to prevent distortion
+        this.panX = this.panX * xScale - xOffset
+        this.panY = this.panY * yScale - yOffset
+        
+        // Clamp zoom to reasonable range
+        this.zoom = Math.max(0.1, Math.min(this.zoom, 100))
+      }
+    }
+    
+    // Update bounds
+    this.originalBounds = newBounds
 
-    console.log(`Bounds calculated for ${this.canvasId}:`, this.originalBounds)
+    console.log(`Bounds for ${this.canvasId}:`, this.originalBounds, `(preserveZoom: ${preserveZoom})`, {zoom: this.zoom, panX: this.panX, panY: this.panY})
 
     // Set up mouse event handlers
     this.setupControls()

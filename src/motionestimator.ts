@@ -2,6 +2,10 @@ import type { Vector3, MLocation } from './types.js'
 import { vec, add, sub, mul, div, degToRad } from './vector.js'
 import { calculateWingsuitAcceleration, calculateWingsuitParameters } from './wse.js'
 
+export enum CalculationMethod {
+  TRAPEZOIDAL = 'trapezoidal',
+  STANDARD = 'standard'
+}
 
 export interface MotionState {
   position: Vector3
@@ -31,6 +35,7 @@ export class MotionEstimator {
   private alphaVelocity: number
   private alphaAcceleration: number
   private estimateVelocity: boolean
+  private calculationMethod: CalculationMethod = CalculationMethod.TRAPEZOIDAL
   private p: Vector3           // metres ENU
   private v: Vector3           // m/s ENU
   private a: Vector3           // m/s^2 ENU
@@ -38,6 +43,7 @@ export class MotionEstimator {
   private aWSE: Vector3        // wingsuit model acceleration (m/s^2 ENU)
   private positionDelta: Vector3  // p - lastPosition (ENU)
   private lastUpdateMillis: number | undefined
+  private lastMeasuredVelocity: Vector3 | undefined  // last GPS velocity for acceleration calculation
 
   // Wingsuit parameters
   private kl: number = 0.01
@@ -65,6 +71,7 @@ export class MotionEstimator {
 
     this.positionDelta = vec()  // p - lastPosition (ENU)
     this.lastUpdateMillis = undefined
+    this.lastMeasuredVelocity = undefined
 
     // GPS-origin mode (mirrors Java)
     this.originGps = undefined
@@ -126,7 +133,10 @@ export class MotionEstimator {
     const vMeasured = vec(gps.velE, -gps.velD, gps.velN)
 
     // 1. Calculate acceleration from GPS velocity change (inferred, not measured)
-    const aMeasured = div(sub(vMeasured, this.v), dt)
+    let aMeasured = vec()  // Default to zero acceleration
+    if (this.lastMeasuredVelocity !== undefined) {
+      aMeasured = div(sub(vMeasured, this.lastMeasuredVelocity), dt)
+    }
     this.aMeasured = aMeasured  // Store for plotting
     
     // 2. Calculate predicted velocity for wingsuit acceleration
@@ -142,27 +152,57 @@ export class MotionEstimator {
     
     // 4. Complementary filter for acceleration using wingsuit prediction
     const aOld = this.a
-    this.a = add(mul(aWSE, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
+    this.a = add(mul(aOld, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
   // log aMeasured and aWSE
     console.log('aMeasured:', aMeasured)
     console.log('aWSE:', aWSE)
     console.log("astate:", this.a)
-    // 5. Predict current state using trapezoidal rule from last state
-    // Trapezoidal rule for velocity: v_pred = v + (a_old + a_new) * dt / 2
-    const vPredictedFinal = add(this.v, mul(add(aOld, this.a), dt / 2))
     
-    // Trapezoidal rule for position: p_pred = p + (v_old + v_new) * dt / 2
-    const pPredictedFinal = add(this.p, mul(add(this.v, vPredictedFinal), dt / 2))
+    if (this.calculationMethod === CalculationMethod.STANDARD) {
+      // Standard method: position first, then velocity, then acceleration (no trapezoidal rule)
+      
+      // Update position using current velocity
+      const pPredictedStandard = add(this.p, mul(this.v, dt))
+      
+      // Update velocity using current acceleration
+      const vPredictedStandard = add(this.v, mul(this.a, dt))
+      
+      // Update acceleration using new velocity
+      const [aWSE_x_new, aWSE_y_new, aWSE_z_new] = calculateWingsuitAcceleration(
+        vPredictedStandard.z, vPredictedStandard.x, -vPredictedStandard.y,
+        this.kl, this.kd, this.roll
+      )
+      this.aWSE = vec(aWSE_x_new, aWSE_y_new, aWSE_z_new)
+      
+      // Complementary filter for velocity (blend predicted with GPS measurement)
+      if (this.estimateVelocity) {
+        this.v = add(mul(vPredictedStandard, 1 - this.alphaVelocity), mul(vMeasured, this.alphaVelocity))
+      } else {
+        this.v = vMeasured // Use GPS velocity directly if not estimating
+      }
 
-    // 6. Complementary filter for velocity (blend predicted with GPS measurement)
-    if (this.estimateVelocity) {
-      this.v = add(mul(vPredictedFinal, 1 - this.alphaVelocity), mul(vMeasured, this.alphaVelocity))
+      // Complementary filter for position (blend predicted with GPS measurement)
+      this.p = add(mul(pPredictedStandard, 1 - this.alpha), mul(pMeasured, this.alpha))
     } else {
-      this.v = vMeasured // Use GPS velocity directly if not estimating
-    }
+      // Trapezoidal method (existing implementation)
+      
+      // 5. Predict current state using trapezoidal rule from last state
+      // Trapezoidal rule for velocity: v_pred = v + (a_old + a_new) * dt / 2
+      const vPredictedFinal = add(this.v, mul(add(aOld, this.a), dt / 2))
+      
+      // Trapezoidal rule for position: p_pred = p + (v_old + v_new) * dt / 2
+      const pPredictedFinal = add(this.p, mul(add(this.v, vPredictedFinal), dt / 2))
 
-    // 7. Complementary filter for position (blend predicted with GPS measurement)
-    this.p = add(mul(pPredictedFinal, 1 - this.alpha), mul(pMeasured, this.alpha))
+      // 6. Complementary filter for velocity (blend predicted with GPS measurement)
+      if (this.estimateVelocity) {
+        this.v = add(mul(vPredictedFinal, 1 - this.alphaVelocity), mul(vMeasured, this.alphaVelocity))
+      } else {
+        this.v = vMeasured // Use GPS velocity directly if not estimating
+      }
+
+      // 7. Complementary filter for position (blend predicted with GPS measurement)
+      this.p = add(mul(pPredictedFinal, 1 - this.alpha), mul(pMeasured, this.alpha))
+    }
 
     // 8. Update wingsuit parameters based on final state
     // Convert ENU to NDE for parameter calculation
@@ -174,6 +214,9 @@ export class MotionEstimator {
     this.roll = newRoll
 
     this.positionDelta = sub(this.p, pMeasured)
+    
+    // Store current measured velocity for next iteration's acceleration calculation
+    this.lastMeasuredVelocity = vMeasured
     this.lastUpdateMillis = tNow
   }
 
@@ -185,89 +228,7 @@ export class MotionEstimator {
     this.updateFromGps(gps)
   }
 
-  /**
-   * ENU path: if you already have ENU position and velocity, this mirrors the same math.
-   * The first call sets an ENU origin from your first (x,y,z) so that position starts at 0.
-   * @param x East coordinate
-   * @param y Up coordinate  
-   * @param z North coordinate
-   * @param vx East velocity
-   * @param vy Up velocity
-   * @param vz North velocity
-   * @param timestampMillis Timestamp in milliseconds
-   */
-  updateWithEnu(x: number, y: number, z: number, vx: number, vy: number, vz: number, timestampMillis: number): void {
-    const tNow = timestampMillis
-
-    if (this.lastUpdateMillis === undefined) {
-      this.originEnu = vec(x, y, z)  // set ENU origin so position = 0 on first sample
-      this.originGps = undefined      // choose ENU-origin mode
-      this.p = vec()
-      this.v = vec(vx, vy, vz)
-      this.a = vec()
-      this.aMeasured = vec()
-      this.aWSE = vec()
-      this.positionDelta = vec()
-      this.lastUpdateMillis = tNow
-      return
-    }
-
-    const dt = Math.max(0, (tNow - this.lastUpdateMillis) * 1e-3)
-    if (dt === 0) return // Skip if no time has passed
-
-    // Get current measurements in ENU relative to origin
-    const pMeasured = this.originEnu ? sub(vec(x, y, z), this.originEnu) : vec()
-    const vMeasured = vec(vx, vy, vz)
-
-    // 1. Calculate acceleration from velocity change (inferred from GPS velocity)
-    const aMeasured = div(sub(vMeasured, this.v), dt)
-    this.aMeasured = aMeasured  // Store for plotting
-    
-    // 2. Calculate predicted velocity for wingsuit acceleration
-    const vPredicted = add(this.v, mul(this.a, dt))
-    
-    // 3. Calculate wingsuit acceleration using predicted velocity and stored parameters
-    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(
-      vPredicted.z, vPredicted.x, -vPredicted.y,
-      this.kl, this.kd, this.roll
-    )
-    const aWSE = vec(aWSE_x, aWSE_y, aWSE_z)
-    this.aWSE = aWSE  // Store for plotting
-   
-    // 4. Complementary filter for acceleration using wingsuit prediction
-    const aOld = this.a
-    this.a = add(mul(aWSE, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
-
-    // 5. Predict current state using trapezoidal rule from last state
-    // Trapezoidal rule for velocity: v_pred = v + (a_old + a_new) * dt / 2
-    const vPredictedFinal = add(this.v, mul(add(aOld, this.a), dt / 2))
-    
-    // Trapezoidal rule for position: p_pred = p + (v_old + v_new) * dt / 2
-    const pPredictedFinal = add(this.p, mul(add(this.v, vPredictedFinal), dt / 2))
-
-    // 6. Complementary filter for velocity
-    if (this.estimateVelocity) {
-      this.v = add(mul(vPredictedFinal, 1 - this.alphaVelocity), mul(vMeasured, this.alphaVelocity))
-    } else {
-      this.v = vMeasured // Use measured velocity directly if not estimating
-    }
-
-    // 7. Complementary filter for position
-    this.p = add(mul(pPredictedFinal, 1 - this.alpha), mul(pMeasured, this.alpha))
-
-    // 8. Update wingsuit parameters based on final state
-    // Convert ENU to NDE for parameter calculation
-    const vN = this.v.z, vE = this.v.x, vD = -this.v.y
-    const aN = this.a.z, aE = this.a.x, aD = -this.a.y
-    const [newKl, newKd, newRoll] = calculateWingsuitParameters(vN, vE, vD, aN, aE, aD, this.kl, this.kd, this.roll)
-    this.kl = newKl
-    this.kd = newKd
-    this.roll = newRoll
-
-    this.positionDelta = sub(this.p, pMeasured)
-    this.lastUpdateMillis = tNow
-  }
-
+  
   /**
    * Delta from the LAST measurement's ENU position to a future query time.
    * This exactly matches the Java method: positionDelta + v*dt + 0.5*a*dt^2
@@ -332,6 +293,7 @@ export class MotionEstimator {
     this.aWSE = vec()
     this.positionDelta = vec()
     this.lastUpdateMillis = undefined
+    this.lastMeasuredVelocity = undefined
     this.originGps = undefined
     this.originEnu = undefined
     
@@ -339,5 +301,21 @@ export class MotionEstimator {
     this.kl = 0.01
     this.kd = 0.01
     this.roll = 0.0
+  }
+
+  /**
+   * Set the calculation method for state integration.
+   * @param method The calculation method to use
+   */
+  setCalculationMethod(method: CalculationMethod): void {
+    this.calculationMethod = method
+  }
+
+  /**
+   * Get the current calculation method.
+   * @returns The current calculation method
+   */
+  getCalculationMethod(): CalculationMethod {
+    return this.calculationMethod
   }
 }

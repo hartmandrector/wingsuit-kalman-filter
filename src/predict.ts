@@ -1,7 +1,7 @@
-import { MotionEstimator } from './motionestimator.js'
+import { MotionEstimator, CalculationMethod } from './motionestimator.js'
 import { setReference, ENUToLatLngAlt, latLonAltToENU } from './enu.js'
 import type { MLocation, PlotPoint, Vector3 } from './types.js'
-import { KalmanFilter3D } from './kalman.js'
+import { KalmanFilter3D, CalculationMethod as KalmanCalculationMethod } from './kalman.js'
 import { sub, magnitude } from './vector.js'
 import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from './smoothness.js'
 
@@ -96,6 +96,16 @@ function quadraticScale(value: number): number {
   return 0.0001 + (value * value) * (25 - 0.0001)
 }
 
+export function quadraticScaleDisplay(value: number): number {
+  // Exported version of quadraticScale for display purposes
+  return quadraticScale(value)
+}
+
+function quadraticScaleAcceleration(value: number): number {
+  // Maps 0-1 to 0.0001-500 using quadratic scaling for acceleration
+  return 0.0001 + (value * value) * (500 - 0.0001)
+}
+
 function inverseQuadraticScale(scaledValue: number): number {
   // Maps 0.0001-25 back to 0-1
   return Math.sqrt((scaledValue - 0.0001) / (25 - 0.0001))
@@ -107,6 +117,24 @@ export function signedQuadraticScale(value: number): number {
   const absValue = Math.abs(value)
   const scaled = absValue * absValue * 25
   return sign * scaled
+}
+
+function signedQuadraticScaleVelocity(value: number): number {
+  // Maps -1 to 1 to -100 to 100 using quadratic scaling that preserves sign
+  const sign = Math.sign(value)
+  const absValue = Math.abs(value)
+  const scaled = absValue * absValue * 100
+  return sign * scaled
+}
+
+export function signedQuadraticScaleVelocityDisplay(value: number): number {
+  // Exported version of signedQuadraticScaleVelocity for display purposes
+  return signedQuadraticScaleVelocity(value)
+}
+
+export function quadraticScaleAccelerationDisplay(value: number): number {
+  // Maps 0-1 to 0.0001-500 using quadratic scaling for acceleration (exported for display)
+  return quadraticScaleAcceleration(value)
 }
 
 export function inverseSignedQuadraticScale(scaledValue: number): number {
@@ -132,7 +160,7 @@ export function setKalmanProcessNoiseVelocity(value: number): void {
 }
 
 export function setKalmanProcessNoiseAcceleration(value: number): void {
-  kalmanProcessNoise.acceleration = quadraticScale(value)
+  kalmanProcessNoise.acceleration = quadraticScaleAcceleration(value)
   if (filterType === 'kalman') {
     updateKalmanParameters(estimator as KalmanFilter3D)
   }
@@ -146,10 +174,27 @@ export function setKalmanMeasurementNoisePosition(value: number): void {
 }
 
 export function setKalmanMeasurementNoiseVelocity(value: number): void {
-  kalmanMeasurementNoise.velocity = signedQuadraticScale(value)
+  kalmanMeasurementNoise.velocity = signedQuadraticScaleVelocity(value)
   if (filterType === 'kalman') {
     updateKalmanParameters(estimator as KalmanFilter3D)
   }
+}
+
+export function setCalculationMethod(method: CalculationMethod): void {
+  if (filterType === 'motionestimator') {
+    (estimator as MotionEstimator).setCalculationMethod(method)
+  } else if (filterType === 'kalman') {
+    (estimator as KalmanFilter3D).setCalculationMethod(method as KalmanCalculationMethod)
+  }
+}
+
+export function getCalculationMethod(): CalculationMethod {
+  if (filterType === 'motionestimator') {
+    return (estimator as MotionEstimator).getCalculationMethod()
+  } else if (filterType === 'kalman') {
+    return (estimator as KalmanFilter3D).getCalculationMethod() as CalculationMethod
+  }
+  return CalculationMethod.TRAPEZOIDAL
 }
 
 export interface ErrorStats {
@@ -243,7 +288,7 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
 
     // Generate interpolated points until next GPS point (or for 2 seconds after last point)
     const nextPoint = gpsPoints[index + 1]
-    const endTime = nextPoint ? nextPoint.time : point.time + 2000 // 2 seconds after last GPS
+    const endTime = nextPoint ? nextPoint.time : point.time + 20000 // 2 seconds after last GPS
 
     // Generate predicted points at even intervals, maintaining spacing across GPS points
     while (nextPredictionTime < endTime) {

@@ -12,6 +12,10 @@ import { Vector3, MLocation } from './types.js'
 import { MotionState } from './motionestimator.js'
 import { calculateWingsuitAcceleration, calculateWingsuitParameters } from './wse.js'
 
+export enum CalculationMethod {
+  TRAPEZOIDAL = 'trapezoidal',
+  STANDARD = 'standard'
+}
 
 export class KalmanFilter3D {
   private state: number[]
@@ -21,7 +25,9 @@ export class KalmanFilter3D {
   private B: number[][]
   private u: number[]
   private lastUpdateTime: number | undefined
+  private lastMeasuredVelocity: { vx: number, vy: number, vz: number } | undefined
   private originGps: MLocation | undefined
+  private calculationMethod: CalculationMethod = CalculationMethod.TRAPEZOIDAL
   
   // Store acceleration components for plotting
   private aMeasured: Vector3 = { x: 0, y: 0, z: 0 }
@@ -78,44 +84,85 @@ export class KalmanFilter3D {
   private integrateStep(dt: number): void {
     const [x, y, z, vx, vy, vz, ax, ay, az, kl, kd, roll] = this.state
 
-    // Calculate current acceleration
-    const [ax_current, ay_current, az_current] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
+    if (this.calculationMethod === CalculationMethod.STANDARD) {
+      // Standard method: position first, then velocity, then acceleration (no trapezoidal rule)
+      
+      // Update position using current velocity
+      const x_next = x + vx * dt
+      const y_next = y + vy * dt
+      const z_next = z + vz * dt
+      
+      // Update velocity using current acceleration
+      const vx_next = vx + ax * dt
+      const vy_next = vy + ay * dt
+      const vz_next = vz + az * dt
+      
+      // Calculate new acceleration using updated velocity
+      const [ax_next, ay_next, az_next] = calculateWingsuitAcceleration(vz_next, vx_next, -vy_next, kl, kd, roll)
+      
+      // Update state
+      this.state = [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_next, ay_next, az_next, kl, kd, roll]
+    } else {
+      // Trapezoidal method (existing implementation)
+      
+      // Calculate current acceleration
+      const [ax_current, ay_current, az_current] = [ax,ay,az]//calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
 
-    // Update velocity using trapezoidal rule
-    let vx_next = vx + (ax_current + ax) / 2 * dt
-    let vy_next = vy + (ay_current + ay) / 2 * dt
-    let vz_next = vz + (az_current + az) / 2 * dt
+      // Update velocity using trapezoidal rule
+      let vx_next = vx + (ax_current + ax) / 2 * dt
+      let vy_next = vy + (ay_current + ay) / 2 * dt
+      let vz_next = vz + (az_current + az) / 2 * dt
 
+      // Update position using trapezoidal rule
+      const x_next = x + (vx + vx_next) / 2 * dt
+      const y_next = y + (vy + vy_next) / 2 * dt
+      const z_next = z + (vz + vz_next) / 2 * dt
 
-    // Update position using trapezoidal rule
-    const x_next = x + (vx + vx_next) / 2 * dt
-    const y_next = y + (vy + vy_next) / 2 * dt
-    const z_next = z + (vz + vz_next) / 2 * dt
-
-    // Update state (kl, kd, roll remain constant during prediction)
-    this.state = [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_current, ay_current, az_current, kl, kd, roll]
+      // Update state (kl, kd, roll remain constant during prediction)
+      this.state = [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_current, ay_current, az_current, kl, kd, roll]
+    }
   }
 
   private integrateState(state: number[], dt: number): number[] {
     const [x, y, z, vx, vy, vz, ax, ay, az, kl, kd, roll] = state
 
-    // Calculate current acceleration
-   
-    const [ax_current, ay_current, az_current] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
+    if (this.calculationMethod === CalculationMethod.STANDARD) {
+      // Standard method: position first, then velocity, then acceleration (no trapezoidal rule)
+      
+      // Update position using current velocity
+      const x_next = x + vx * dt
+      const y_next = y + vy * dt
+      const z_next = z + vz * dt
+      
+      // Update velocity using current acceleration
+      const vx_next = vx + ax * dt
+      const vy_next = vy + ay * dt
+      const vz_next = vz + az * dt
+      
+      // Calculate new acceleration using updated velocity
+      const [ax_next, ay_next, az_next] = calculateWingsuitAcceleration(vz_next, vx_next, -vy_next, kl, kd, roll)
+      
+      // Return updated state
+      return [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_next, ay_next, az_next, kl, kd, roll]
+    } else {
+      // Trapezoidal method (existing implementation)
+      
+      // Calculate current acceleration
+      const [ax_current, ay_current, az_current] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
 
-    // Update velocity using trapezoidal rule
-    let vx_next = vx + (ax_current + ax) / 2 * dt
-    let vy_next = vy + (ay_current + ay) / 2 * dt
-    let vz_next = vz + (az_current + az) / 2 * dt
+      // Update velocity using trapezoidal rule
+      let vx_next = vx + (ax_current + ax) / 2 * dt
+      let vy_next = vy + (ay_current + ay) / 2 * dt
+      let vz_next = vz + (az_current + az) / 2 * dt
 
+      // Update position using trapezoidal rule
+      const x_next = x + (vx + vx_next) / 2 * dt
+      const y_next = y + (vy + vy_next) / 2 * dt
+      const z_next = z + (vz + vz_next) / 2 * dt
 
-    // Update position using trapezoidal rule
-    const x_next = x + (vx + vx_next) / 2 * dt
-    const y_next = y + (vy + vy_next) / 2 * dt
-    const z_next = z + (vz + vz_next) / 2 * dt
-
-    // Update state
-    return [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_current, ay_current, az_current, kl, kd, roll]
+      // Return updated state
+      return [x_next, y_next, z_next, vx_next, vy_next, vz_next, ax_current, ay_current, az_current, kl, kd, roll]
+    }
   }
 
   // predict at
@@ -240,22 +287,19 @@ export class KalmanFilter3D {
 
     // Extract measured acceleration from GPS data change
     let measuredAx = 0, measuredAy = 0, measuredAz = 0
-    if (this.lastUpdateTime !== undefined) {
+    if (this.lastUpdateTime !== undefined && this.lastMeasuredVelocity !== undefined) {
       const dt = (timestamp - this.lastUpdateTime) / 1000
       if (dt > 0) {
-        measuredAx = (vx - this.state[3]) / dt
-        measuredAy = (vy - this.state[4]) / dt
-        measuredAz = (vz - this.state[5]) / dt
+        measuredAx = (vx - this.lastMeasuredVelocity.vx) / dt
+        measuredAy = (vy - this.lastMeasuredVelocity.vy) / dt
+        measuredAz = (vz - this.lastMeasuredVelocity.vz) / dt
       }
     }
     
     // Store measured acceleration for plotting
     this.aMeasured = { x: measuredAx, y: measuredAy, z: measuredAz }
     
-    // Calculate and store WSE acceleration for plotting
-    const kl = this.state[9], kd = this.state[10], roll = this.state[11]
-    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
-    this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
+   
 
     // Update wingsuit parameters from kalman acceleration,
     const [ae_kalman, ad_kalman, an_kalman] = [this.state[6], -this.state[7], this.state[8]]
@@ -265,7 +309,7 @@ export class KalmanFilter3D {
 
  if (this.lastUpdateTime !== undefined) {
       const deltaTime = (timestamp - this.lastUpdateTime) / 1000
-      this.predict(deltaTime) //advance state
+      this.predict(deltaTime) //advance state using updated state kl, kd, roll
     }
 
     // Standard Kalman update for position and velocity only
@@ -306,11 +350,19 @@ export class KalmanFilter3D {
       kd: this.state[10],
       rolldeg: this.state[11] * 180 / Math.PI
     })
+
+ // Calculate and store WSE acceleration for plotting
+    const kl = this.state[9], kd = this.state[10], roll = this.state[11]
+    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
+    this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
+
     // Update covariance: P = (I - K*H)*P
     const KH = matrixMultiply(K, H)
     const I_KH = matrixSubtract(createIdentityMatrix(12), KH)
     this.P = matrixMultiply(I_KH, this.P)
 
+    // Store current measured velocity for next iteration's acceleration calculation
+    this.lastMeasuredVelocity = { vx, vy, vz }
     this.lastUpdateTime = timestamp
   }
 
@@ -404,5 +456,13 @@ export class KalmanFilter3D {
     this.measurementNoiseOffsets.velocity = velocity
     // Acceleration offset is not used since we removed that slider
     this.measurementNoiseOffsets.acceleration = 0
+  }
+
+  setCalculationMethod(method: CalculationMethod): void {
+    this.calculationMethod = method
+  }
+
+  getCalculationMethod(): CalculationMethod {
+    return this.calculationMethod
   }
 }
