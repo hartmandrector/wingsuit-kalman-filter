@@ -13,15 +13,15 @@ let currentAlpha = 0.9
 let currentAlphaVelocity = 0.9
 let currentAlphaAcceleration = 0.9
 
-// Kalman Filter parameters
+// Kalman Filter parameters - matches slider defaults
 let kalmanProcessNoise = {
-  position: 0.1,
-  velocity: 2.0,
-  acceleration: 10.0
+  position: 1.4401,    // quadraticScale(0.24) 
+  velocity: 0.4226,    // quadraticScale(0.13)
+  acceleration: 68.4501 // quadraticScaleAcceleration(0.37)
 }
 let kalmanMeasurementNoise = {
-  position: 25.0,
-  velocity: 1.0
+  position: 1.21,      // signedQuadraticScale(0.22)
+  velocity: 2.25       // signedQuadraticScaleVelocity(0.15)
 }
 
 let estimator = createEstimator()

@@ -138,8 +138,8 @@ export abstract class PlotView {
       (e.deltaY < 0 ? 1.04 : 1/1.04) : baseZoomFactor
     
     this.zoom *= adaptiveZoomFactor
-    // Increased max zoom limit and more reasonable min zoom
-    this.zoom = Math.max(0.2, Math.min(this.zoom, 100))
+    // Much higher max zoom limit for detailed analysis
+    this.zoom = Math.max(0.2, Math.min(this.zoom, 1000))
     
     const worldAfter = this.screenToWorld(mouseX, mouseY)
     this.panX += (worldBefore.x - worldAfter.x)

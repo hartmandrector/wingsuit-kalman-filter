@@ -124,6 +124,9 @@ export class ProfileView extends PlotView {
       }
     }
 
+    // Draw connection lines between GPS and filter data points
+    this.drawConnectionLines()
+
     // Highlight hovered point
     if (this.hoveredPoint && this.hoveredPoint.z !== undefined && this.hoveredPoint.y !== undefined) {
       const screenPos = getScreenCoords(this.hoveredPoint.z, this.hoveredPoint.y, this.hoveredPoint.x ?? 0, this.originalBounds, this.zoom, this.panX, this.panY, this.canvas)
@@ -236,5 +239,77 @@ export class ProfileView extends PlotView {
     lines.forEach((line, index) => {
       this.ctx!.fillText(line, tooltipX + padding, tooltipY + padding + (index + 1) * lineHeight)
     })
+  }
+
+  private drawConnectionLines(): void {
+    if (!this.ctx || !this.canvas || this.allSeries.length < 2) return
+
+    // Assume first series is GPS data, second is filter data
+    const gpsData = this.allSeries[0].data
+    const filterData = this.allSeries[1].data
+
+    if (gpsData.length === 0 || filterData.length === 0) return
+
+    console.log('Profile view drawing connection lines:', {
+      gpsDataLength: gpsData.length,
+      filterDataLength: filterData.length,
+      firstGps: gpsData[0],
+      firstFilter: filterData[0]
+    })
+
+    // Set up styling for connection lines - make them more visible
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)' // More opaque white lines
+    this.ctx.lineWidth = 2 // Thicker lines
+    this.ctx.setLineDash([5, 3]) // More visible dashed pattern
+
+    // Draw connection lines between corresponding points
+    // Skip fewer points for better visibility (every 2nd point)
+    for (let i = 0; i < gpsData.length; i += 2) {
+      const gpsPoint = gpsData[i]
+      
+      // Check if GPS point has the required coordinates
+      if (!gpsPoint.time) continue
+      
+      // GPS data might be in lat/lng format, need to convert to ENU if needed
+      let gpsX, gpsY, gpsZ
+      if (gpsPoint.x !== undefined && gpsPoint.y !== undefined && gpsPoint.z !== undefined) {
+        // Already in ENU format
+        gpsX = gpsPoint.x
+        gpsY = gpsPoint.y  
+        gpsZ = gpsPoint.z
+      } else {
+        // Skip if no position data
+        continue
+      }
+
+      // Find the closest filter point by time
+      let closestFilterPoint: PlotPoint | null = null
+      let minTimeDiff = Infinity
+
+      for (const filterPoint of filterData) {
+        if (!filterPoint.time || filterPoint.z === undefined || filterPoint.y === undefined) continue
+        
+        const timeDiff = Math.abs(filterPoint.time - gpsPoint.time)
+        if (timeDiff < minTimeDiff) {
+          minTimeDiff = timeDiff
+          closestFilterPoint = filterPoint
+        }
+      }
+
+      // Draw line if we found a matching filter point (within 2 seconds to be more permissive)
+      if (closestFilterPoint && minTimeDiff < 2000) {
+        // For profile view: X=North (z), Y=Up (y), Z=East (x)
+        const gpsScreenPos = getScreenCoords(gpsZ, gpsY, gpsX, this.originalBounds, this.zoom, this.panX, this.panY, this.canvas)
+        const filterScreenPos = getScreenCoords(closestFilterPoint.z!, closestFilterPoint.y!, closestFilterPoint.x ?? 0, this.originalBounds, this.zoom, this.panX, this.panY, this.canvas)
+
+        this.ctx.beginPath()
+        this.ctx.moveTo(gpsScreenPos.x, gpsScreenPos.y)
+        this.ctx.lineTo(filterScreenPos.x, filterScreenPos.y)
+        this.ctx.stroke()
+      }
+    }
+
+    // Reset line dash and styling
+    this.ctx.setLineDash([])
   }
 }

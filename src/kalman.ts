@@ -56,12 +56,12 @@ export class KalmanFilter3D {
     this.P[10][10] = 0.1 // kd uncertainty  
     this.P[11][11] = 0.005 // roll uncertainty
 
-    // Process noise covariance - adjusted for wingsuit dynamics
+    // Process noise covariance - using default slider values
     this.Q = createIdentityMatrix(12)
     for (let i = 0; i < 3; i++) {
-      this.Q[i][i] = 0.1 // Position process noise
-      this.Q[i + 3][i + 3] = 2.0 // Velocity process noise
-      this.Q[i + 6][i + 6] = 10.0 // Acceleration process noise (higher for wingsuit)
+      this.Q[i][i] = 1.4401 // Position process noise (matches slider default)
+      this.Q[i + 3][i + 3] = 0.4226 // Velocity process noise (matches slider default)
+      this.Q[i + 6][i + 6] = 68.4501 // Acceleration process noise (matches slider default)
     }
     this.Q[9][9] = 0.01   // kl process noise (slow changes)
     this.Q[10][10] = 0.01 // kd process noise (slow changes)
@@ -70,11 +70,11 @@ export class KalmanFilter3D {
     this.B = createIdentityMatrix(12)
     this.u = new Array(12).fill(0)
 
-    // Measurement noise covariance (position and velocity measurements only)
+    // Measurement noise covariance (position and velocity measurements only) - using default slider values
     this.R = createIdentityMatrix(6)
     for (let i = 0; i < 3; i++) {
-      this.R[i][i] = 25.0 // GPS position measurement noise
-      this.R[i + 3][i + 3] = 1.0 // GPS velocity measurement noise
+      this.R[i][i] = 1.21 // GPS position measurement noise (matches slider default)
+      this.R[i + 3][i + 3] = 2.25 // GPS velocity measurement noise (matches slider default)
     }
 
     this.lastUpdateTime = undefined
@@ -201,10 +201,13 @@ export class KalmanFilter3D {
     // Create approximate Jacobian for covariance propagation
     const F = this.calculateJacobian(deltaTime)
     console.log("F:", F)
-    // Predict covariance: P = F*P*F^T + Q
+    // Predict covariance: P = F*P*F^T + Q*dt (scale process noise by time step)
     const FP = matrixMultiply(F, this.P)
     const FPFT = matrixMultiply(FP, transpose(F))
-    this.P = matrixAdd(FPFT, this.Q)
+    
+    // Scale Q by deltaTime for proper discrete-time process noise
+    const Q_scaled = this.Q.map(row => row.map(val => val * deltaTime))
+    this.P = matrixAdd(FPFT, Q_scaled)
   }
 
   private calculateJacobian(dt: number): number[][] {
@@ -248,12 +251,12 @@ export class KalmanFilter3D {
     this.R = createIdentityMatrix(6)
     for (let i = 0; i < 3; i++) {
       // Apply position offset, ensure positive values
-      const basePositionNoise = i === 1 ? vAcc : hAcc
-      const positionNoise = Math.max(0.0001, basePositionNoise + this.measurementNoiseOffsets.position)
+      //const basePositionNoise = i === 1 ? vAcc : hAcc
+      const positionNoise = Math.max(0.0001, this.measurementNoiseOffsets.position)
       this.R[i][i] = positionNoise
       
       // Apply velocity offset, ensure positive values
-      const velocityNoise = Math.max(0.0001, sAcc + this.measurementNoiseOffsets.velocity)
+      const velocityNoise = Math.max(0.0001, this.measurementNoiseOffsets.velocity)
       this.R[i + 3][i + 3] = velocityNoise
     }
   }
@@ -299,13 +302,10 @@ export class KalmanFilter3D {
     // Store measured acceleration for plotting
     this.aMeasured = { x: measuredAx, y: measuredAy, z: measuredAz }
     
-   
-
     // Update wingsuit parameters from kalman acceleration,
-    const [ae_kalman, ad_kalman, an_kalman] = [this.state[6], -this.state[7], this.state[8]]
-    const [ve_kalman, vd_kalman, vn_kalman] = [this.state[3], -this.state[4], this.state[5]]
-    this.updateWingsuitParameters(vn_kalman, ve_kalman, vd_kalman, an_kalman, ae_kalman, ad_kalman)
-
+    //const [ae_kalman, ad_kalman, an_kalman] = [this.state[6], -this.state[7], this.state[8]]
+    //const [ve_kalman, vd_kalman, vn_kalman] = [this.state[3], -this.state[4], this.state[5]]
+    //this.updateWingsuitParameters(vn_kalman, ve_kalman, vd_kalman, an_kalman, ae_kalman, ad_kalman)
 
  if (this.lastUpdateTime !== undefined) {
       const deltaTime = (timestamp - this.lastUpdateTime) / 1000
@@ -342,7 +342,18 @@ export class KalmanFilter3D {
       this.state[i] += Ky[i]
     }
 
-    console.log(`Kalman State update at ${timestamp}:`, {
+     // Update wingsuit parameters from kalman acceleration,
+    const [ae_kalma, ad_kalma, an_kalma] = [this.state[6], -this.state[7], this.state[8]]
+    const [ve_kalma, vd_kalma, vn_kalma] = [this.state[3], -this.state[4], this.state[5]]
+    this.updateWingsuitParameters(vn_kalma, ve_kalma, vd_kalma, an_kalma, ae_kalma, ad_kalma)
+
+
+ // Calculate and store WSE acceleration for plotting
+    const kl = this.state[9], kd = this.state[10], roll = this.state[11]
+    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
+    this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
+
+     console.log(`Kalman State update at ${timestamp}:`, {
       position: { x: this.state[0], y: this.state[1], z: this.state[2] },
       velocity: { x: this.state[3], y: this.state[4], z: this.state[5] },
       acceleration: { x: this.state[6], y: this.state[7], z: this.state[8] },
@@ -350,11 +361,6 @@ export class KalmanFilter3D {
       kd: this.state[10],
       rolldeg: this.state[11] * 180 / Math.PI
     })
-
- // Calculate and store WSE acceleration for plotting
-    const kl = this.state[9], kd = this.state[10], roll = this.state[11]
-    const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
-    this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
 
     // Update covariance: P = (I - K*H)*P
     const KH = matrixMultiply(K, H)
@@ -436,6 +442,7 @@ export class KalmanFilter3D {
     // Reset timestamps and origin
     this.lastUpdateTime = undefined
     this.originGps = undefined
+    this.lastMeasuredVelocity = undefined
   }
 
   setProcessNoise(position: number, velocity: number, acceleration: number, wingsuit: number): void {

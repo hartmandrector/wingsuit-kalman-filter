@@ -744,4 +744,46 @@ async function loadDefaultFile(): Promise<void> {
 // Load default file when page loads
 loadDefaultFile()
 
+// Initialize slider values to match their default HTML values
+function initializeSliderDefaults() {
+  // Initialize Kalman filter sliders with their default values
+  if (kalmanQPositionSlider) {
+    setKalmanProcessNoisePosition(parseFloat(kalmanQPositionSlider.value))
+    if (kalmanQPositionValue) {
+      kalmanQPositionValue.textContent = quadraticScaleDisplay(parseFloat(kalmanQPositionSlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanQVelocitySlider) {
+    setKalmanProcessNoiseVelocity(parseFloat(kalmanQVelocitySlider.value))
+    if (kalmanQVelocityValue) {
+      kalmanQVelocityValue.textContent = quadraticScaleDisplay(parseFloat(kalmanQVelocitySlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanQAccelerationSlider) {
+    setKalmanProcessNoiseAcceleration(parseFloat(kalmanQAccelerationSlider.value))
+    if (kalmanQAccelerationValue) {
+      kalmanQAccelerationValue.textContent = quadraticScaleAccelerationDisplay(parseFloat(kalmanQAccelerationSlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanRPositionSlider) {
+    setKalmanMeasurementNoisePosition(parseFloat(kalmanRPositionSlider.value))
+    if (kalmanRPositionValue) {
+      kalmanRPositionValue.textContent = signedQuadraticScale(parseFloat(kalmanRPositionSlider.value)).toFixed(2)
+    }
+  }
+  
+  if (kalmanRVelocitySlider) {
+    setKalmanMeasurementNoiseVelocity(parseFloat(kalmanRVelocitySlider.value))
+    if (kalmanRVelocityValue) {
+      kalmanRVelocityValue.textContent = signedQuadraticScaleVelocityDisplay(parseFloat(kalmanRVelocitySlider.value)).toFixed(2)
+    }
+  }
+}
+
+// Initialize sliders after a brief delay to ensure DOM is ready
+setTimeout(initializeSliderDefaults, 100)
+
 // Set up speed component selector - removed as it's no longer needed with modular views
