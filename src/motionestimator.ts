@@ -152,7 +152,7 @@ export class MotionEstimator {
     
     // 4. Complementary filter for acceleration using wingsuit prediction
     const aOld = this.a
-    this.a = add(mul(aOld, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
+    this.a = add(mul(aWSE, 1 - this.alphaAcceleration), mul(aMeasured, this.alphaAcceleration))
   // log aMeasured and aWSE
     console.log('aMeasured:', aMeasured)
     console.log('aWSE:', aWSE)

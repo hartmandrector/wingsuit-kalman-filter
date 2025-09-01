@@ -101,3 +101,63 @@ export interface Bounds {
   minLng: number
   maxLng: number
 }
+
+
+export interface Coefficients {
+  cl: number,
+  cd: number,
+}
+export interface SustainedSpeeds {
+  vxs: number,
+  vys: number,
+}
+
+export interface WSEQPolar {
+  type: string,
+  name: string,
+  public: boolean,
+  polarslope: number,
+  polarclo: number,
+  polarmindrag: number,
+  stallmaxdrag?: number, // if we can fly slower than cdstall but cant fly at zero lift use this
+  clstallsep?: number,
+  cdstallsep?: number,
+  clstall?: number,
+  cdstall?: number,
+  clspeedsep?: number,
+  cdspeedsep?: number,
+  clspeed?: number,
+  cdspeed?: number,
+  rangemincl: number,
+  rangemaxcl: number,
+  s: number,
+  m: number,
+  table?: Coefficients[],
+  aoaindexes: number[],
+  aoas: number[],
+  cp?: number[],
+  cm?:number[],
+  cg?: number,
+  i?: number,
+  angledifferential?: number,
+  rotationdifferential?: number,
+  is_enabled?: boolean,
+  suit?: string,
+  stallpoint?: Coefficients[],
+  //guides?: Guides
+  deploypolar?:WSEQPolar,
+  archpolar?:WSEQPolar,//canopy=brakes,ws=arch
+  dearchpolar?:WSEQPolar,
+  aoagrcontrolpoints?:Coefficients[][],//aoa control points
+  cpcontrolpoints?:Coefficients[][],
+  stallcontrolpoints?:Coefficients[][],//coeff control points
+  speedcontrolpoints?:Coefficients[],
+  seperationpoint?:Coefficients,
+  speedseperationpoint?:Coefficients
+  //  detachmentpoint: Coefficients
+  //  inflectiondrag: Coefficients,
+  //  corner:Coefficients,
+  //  maxdrag:Coefficients,
+  //}
+}
+
