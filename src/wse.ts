@@ -5,7 +5,8 @@
  * The output is converted to ENU (East-North-Up) coordinates for compatibility with the motion estimator.
  */
 
-import { Coefficients, SustainedSpeeds, WSEQPolar } from "./types"
+import { Coefficients, SustainedSpeeds, Vector3, WSEQPolar } from "./types"
+import { vec } from "./vector"
 
 /**
  * Sign function helper
@@ -115,10 +116,15 @@ export function calculateWingsuitParameters(
   return [kl, kd, roll]
 }
 
+
+
 export function calculatesustainedspeeds(kl:number, kd:number){
     const denom = Math.pow(kl*kl+kd*kd,.75)
     return [kl/denom, kd/denom]
 }
+
+
+
 
 // Physical constants
 export const gravity = 9.80665 // Acceleration due to gravity (m/s^2)

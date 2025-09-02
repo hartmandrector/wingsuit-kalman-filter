@@ -8,9 +8,10 @@ import {
   transpose,
   matrixInverse
 } from './matrix.js'
-import { Vector3, MLocation } from './types.js'
+import { Vector3, MLocation, Coefficients } from './types.js'
 import { MotionState } from './motionestimator.js'
-import { calculateWingsuitAcceleration, calculateWingsuitParameters } from './wse.js'
+import { calculateWingsuitAcceleration, calculateWingsuitParameters, gravity } from './wse.js'
+import { vec, sub } from './vector.js'
 
 export enum CalculationMethod {
   TRAPEZOIDAL = 'trapezoidal',
@@ -471,5 +472,109 @@ export class KalmanFilter3D {
 
   getCalculationMethod(): CalculationMethod {
     return this.calculationMethod
+  }
+
+  // match filter state to polar!  todo: roll first to get direction then coeffs...
+public matchAerodynamicModel(
+  measuredAccel: Vector3,// from filter
+  velocity: Vector3,
+  roll: number,
+  candidates: Coefficients[],
+  aoas: number[],
+  rho: number,
+  s: number,
+  m: number,
+): { bestCoeff: Coefficients; expectedAccel: Vector3, aoa:number } {
+  let minResidual = Infinity;
+  let best = candidates[0];
+  let bestAccel = vec();
+  let bestaoa = 0;
+
+  for (let i=0; i<candidates.length; i++) {
+    const candidate = candidates[i];
+    const k = .5 * rho* s / m
+    const kl = candidate.cl * k / gravity
+    const kd = candidate.cd * k / gravity
+    const predictedAccelArr = calculateWingsuitAcceleration(velocity.z, velocity.x, -velocity.y, roll, kl,kd);
+    const predictedAccel: Vector3 = { x: predictedAccelArr[0], y: predictedAccelArr[1], z: predictedAccelArr[2] };
+    const diff = sub(measuredAccel, predictedAccel);
+    const residual = Math.sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+
+    if (residual < minResidual) {
+      minResidual = residual;
+      best = candidate;
+      bestAccel = predictedAccel;
+      bestaoa = aoas[i];
+    }
+  }
+
+  return { bestCoeff: best, expectedAccel: bestAccel, aoa: bestaoa};
+}
+
+
+}
+
+export class WindKalmanFilter {
+  private state: number[] // wind velocity [wx, wy, wz]
+  private covariance: number[][]
+  private processNoise: number[][]
+  private measurementNoise: number[][]
+
+  constructor() {
+    this.state = new Array(3).fill(0)
+    this.covariance = createIdentityMatrix(3)
+    this.processNoise = createIdentityMatrix(3)
+    this.measurementNoise = createIdentityMatrix(3)
+  
+    for (let i = 0; i < 3; i++) {
+      this.processNoise[i][i] = 0.1 // Wind process noise
+      this.measurementNoise[i][i] = 1.0 // Wind measurement noise
+    }
+  }
+
+  predict(): void {
+    // Assume wind evolves slowly - add process noise to covariance
+    this.covariance = matrixAdd(this.covariance, this.processNoise)
+  }
+
+  update(measuredWindAccel: Vector3): void {
+    // Create measurement vector from Vector3
+    const measurement = [measuredWindAccel.x, measuredWindAccel.y, measuredWindAccel.z]
+    
+    // H matrix is identity for direct observation
+    const H = createIdentityMatrix(3)
+    
+    // Innovation: z - H*x
+    const innovation = measurement.map((z, i) => z - this.state[i])
+    
+    // Innovation covariance: S = H*P*H^T + R
+    const HP = matrixMultiply(H, this.covariance)
+    const HPHT = matrixMultiply(HP, transpose(H))
+    const S = matrixAdd(HPHT, this.measurementNoise)
+    
+    // Kalman gain: K = P*H^T*S^(-1)
+    const PHT = matrixMultiply(this.covariance, transpose(H))
+    const S_inv = matrixInverse(S)
+    const K = matrixMultiply(PHT, S_inv)
+    
+    // Update state: x = x + K*innovation
+    const Ky = matrixVectorMultiply(K, innovation)
+    for (let i = 0; i < 3; i++) {
+      this.state[i] += Ky[i]
+    }
+    
+    // Update covariance: P = (I - K*H)*P
+    const KH = matrixMultiply(K, H)
+    const I_KH = matrixSubtract(createIdentityMatrix(3), KH)
+    this.covariance = matrixMultiply(I_KH, this.covariance)
+  }
+
+  getWindVelocity(): Vector3 {
+    return { x: this.state[0], y: this.state[1], z: this.state[2] }
+  }
+
+  reset(): void {
+    this.state = new Array(3).fill(0)
+    this.covariance = createIdentityMatrix(3)
   }
 }
