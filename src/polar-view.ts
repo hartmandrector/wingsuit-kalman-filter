@@ -6,9 +6,25 @@ export class PolarView extends PlotView {
   private maxHorizontalSpeed = 100 // m/s
   private maxVerticalSpeed = 100   // m/s (absolute value)
   private minVerticalSpeed = -100  // m/s (negative for descent)
+  private showWindAdjustedSustainedSpeeds = true // Control visibility of wind-adjusted sustained speeds
 
   constructor(canvasId: string) {
     super(canvasId)
+    this.setupWindAdjustedToggle()
+  }
+
+  private setupWindAdjustedToggle(): void {
+    const checkbox = document.getElementById('show-wind-adjusted-checkbox') as HTMLInputElement
+    if (checkbox) {
+      // Set initial state
+      this.showWindAdjustedSustainedSpeeds = checkbox.checked
+      
+      // Add event listener for changes
+      checkbox.addEventListener('change', (e) => {
+        this.showWindAdjustedSustainedSpeeds = (e.target as HTMLInputElement).checked
+        this.renderPlot() // Re-render the plot when setting changes
+      })
+    }
   }
 
   calculateBounds(points: PlotPoint[]) {
@@ -150,6 +166,118 @@ export class PolarView extends PlotView {
     return { x, y }
   }
 
+  // Helper method to get wind-adjusted sustained speed screen coordinates
+  getWindAdjustedSustainedSpeedScreenCoords(point: PlotPoint): { x: number, y: number } | null {
+    const filterPoint = point as any
+    
+    // First, try to use pre-calculated wind-adjusted sustained speeds from Kalman filter
+    if (filterPoint.windsustainedSpeeds && 
+        filterPoint.windsustainedSpeeds.vxs !== undefined && 
+        filterPoint.windsustainedSpeeds.vys !== undefined) {
+      
+      const margin = 60
+      const plotWidth = this.canvas!.width - 2 * margin
+      const plotHeight = this.canvas!.height - 2 * margin
+      
+      // Use pre-calculated wind-adjusted sustained speeds for plotting
+      const horizontalSpeed = filterPoint.windsustainedSpeeds.vxs
+      const verticalSpeed = -filterPoint.windsustainedSpeeds.vys  // Negate for plotting (NED to screen coordinates)
+      
+      // Convert to screen coordinates
+      const x = margin + (horizontalSpeed / this.maxHorizontalSpeed) * plotWidth
+      const y = margin + (this.maxVerticalSpeed - verticalSpeed) / (this.maxVerticalSpeed - this.minVerticalSpeed) * plotHeight
+      
+      return { x, y }
+    }
+    
+    // Fallback: calculate wind-adjusted sustained speeds if not pre-calculated
+    // Check if we have wind-adjusted data - look for proper acceleration components
+    if (!filterPoint.windEstimate || !filterPoint.smoothVelN || !filterPoint.smoothVelE || !filterPoint.smoothVelD || 
+        !filterPoint.accelZ || !filterPoint.accelX || !filterPoint.accelY) return null
+    
+    // Calculate wind-adjusted sustained speeds using the wind estimation
+    const windAdjustedSpeeds = this.calculateWindAdjustedSustainedSpeeds(
+      filterPoint.smoothVelN,
+      filterPoint.smoothVelE, 
+      filterPoint.smoothVelD,
+      filterPoint.accelZ,  // North acceleration
+      filterPoint.accelX,  // East acceleration
+      -filterPoint.accelY, // Down acceleration (negate ENU Y to get NED D)
+      filterPoint.windEstimate
+    )
+    
+    if (!windAdjustedSpeeds) return null
+    
+    const margin = 60
+    const plotWidth = this.canvas!.width - 2 * margin
+    const plotHeight = this.canvas!.height - 2 * margin
+    
+    // Use wind-adjusted sustained speeds for plotting
+    const horizontalSpeed = windAdjustedSpeeds.vxs
+    const verticalSpeed = -windAdjustedSpeeds.vys  // Negate for plotting
+    
+    // Convert to screen coordinates
+    const x = margin + (horizontalSpeed / this.maxHorizontalSpeed) * plotWidth
+    const y = margin + (this.maxVerticalSpeed - verticalSpeed) / (this.maxVerticalSpeed - this.minVerticalSpeed) * plotHeight
+    
+    return { x, y }
+  }
+
+  // Calculate wind-adjusted sustained speeds using wind estimate
+  private calculateWindAdjustedSustainedSpeeds(
+    velN: number, velE: number, velD: number,
+    accelN: number, accelE: number, accelD: number,
+    windEstimate: { x: number, y: number, z: number }
+  ): { vxs: number, vys: number } | null {
+    // Convert wind estimate from ENU to NED for consistency with WSE functions
+    const windN = windEstimate.z   // ENU Z -> NED N
+    const windE = windEstimate.x   // ENU X -> NED E  
+    const windD = -windEstimate.y  // ENU Y -> NED D (flip sign)
+    
+    // Calculate airspeed velocity (ground velocity + wind)
+    const avN = velN + windN
+    const avE = velE + windE
+    const avD = velD + windD
+    
+    const accelDminusG = accelD - 9.81 // gravity constant
+    
+    // Calculate acceleration due to drag (projection along velocity)
+    const vel = Math.sqrt(avN * avN + avE * avE + avD * avD)
+    if (vel < 1.0) return null // Skip at very low speeds
+    
+    const proj = (accelN * avN + accelE * avE + accelDminusG * avD) / vel
+    
+    const dragN = proj * avN / vel
+    const dragE = proj * avE / vel
+    const dragD = proj * avD / vel
+    
+    const accelDrag = Math.sqrt(dragN * dragN + dragE * dragE + dragD * dragD)
+    
+    // Calculate acceleration due to lift (total - drag)
+    const liftN = accelN - dragN
+    const liftE = accelE - dragE
+    const liftD = accelDminusG - dragD
+    
+    const accelLift = Math.sqrt(liftN * liftN + liftE * liftE + liftD * liftD)
+    
+    // Calculate drag sign (should be negative when opposing velocity)
+    const signum = (val: number) => val > 0 ? 1 : val < 0 ? -1 : 0
+    const dragsign = -signum(dragN * avN + dragE * avE + dragD * avD)
+    
+    // Calculate wingsuit coefficients
+    const kl = accelLift / 9.81 / vel / vel
+    const kd = accelDrag / 9.81 / vel / vel * dragsign
+    
+    // Calculate sustained speeds using the same formula as WSE
+    const divisor = Math.pow(kl * kl + kd * kd, 0.75)
+    if (divisor === 0) return null
+    
+    const sustained_x = kl / divisor
+    const sustained_y = kd / divisor
+    
+    return { vxs: sustained_x, vys: sustained_y }
+  }
+
   public renderPlot(): void {
     if (!this.originalBounds || !this.canvas || !this.ctx) return
 
@@ -246,6 +374,7 @@ export class PolarView extends PlotView {
     const sustainedSpeedColor = '#00ff00'     // Sustained speeds (green)
     const smoothedSpeedColor = '#0099ff'      // Smoothed GPS speeds (blue) 
     const smoothSustainedColor = '#800080'    // Smooth sustained speeds (purple)
+    const windAdjustedSustainedColor = '#ff8800' // Wind-adjusted sustained speeds (orange)
 
     // Draw all series (GPS and filter velocity data)
     for (let i = 0; i < this.allSeries.length; i++) {
@@ -372,7 +501,53 @@ export class PolarView extends PlotView {
       }
     }
 
-    console.log(`Polar view: Drew ${sustainedSpeedCount} sustained speeds, ${smoothedSpeedCount} smoothed speeds, ${smoothSustainedSpeedCount} smooth sustained speeds`)
+    // Draw wind-adjusted sustained speeds as orange points (only if enabled)
+    if (this.showWindAdjustedSustainedSpeeds) {
+      this.ctx.fillStyle = windAdjustedSustainedColor
+      let windAdjustedSustainedSpeedCount = 0
+      
+      // Debug: Check what wind data is available
+      let totalPoints = 0
+      let pointsWithWind = 0
+      let pointsWithWindSustained = 0
+      
+      for (const plotSeries of this.allSeries) {
+        for (const point of plotSeries.data) {
+          totalPoints++
+          const filterPoint = point as any
+          if (filterPoint.windEstimate) pointsWithWind++
+          if (filterPoint.windsustainedSpeeds) pointsWithWindSustained++
+          
+          const windAdjustedPos = this.getWindAdjustedSustainedSpeedScreenCoords(point)
+          
+          if (windAdjustedPos && 
+              windAdjustedPos.x >= margin && windAdjustedPos.x <= margin + plotWidth && 
+              windAdjustedPos.y >= margin && windAdjustedPos.y <= margin + plotHeight) {
+            
+            windAdjustedSustainedSpeedCount++
+            this.ctx.beginPath()
+            
+            // Highlight hovered point for wind-adjusted sustained speeds too
+            if (this.hoveredPoint === point) {
+              this.ctx.strokeStyle = '#ffffff'
+              this.ctx.lineWidth = 2
+              this.ctx.arc(windAdjustedPos.x, windAdjustedPos.y, 3, 0, 2 * Math.PI)
+              this.ctx.stroke()
+              this.ctx.beginPath()
+              this.ctx.fillStyle = windAdjustedSustainedColor
+            }
+            
+            this.ctx.arc(windAdjustedPos.x, windAdjustedPos.y, 1, 0, 2 * Math.PI)
+            this.ctx.fill()
+          }
+        }
+      }
+
+      console.log(`Polar view: Drew ${sustainedSpeedCount} sustained speeds, ${smoothedSpeedCount} smoothed speeds, ${smoothSustainedSpeedCount} smooth sustained speeds, ${windAdjustedSustainedSpeedCount} wind-adjusted sustained speeds`)
+      console.log(`Polar view wind debug: ${totalPoints} total points, ${pointsWithWind} with windEstimate, ${pointsWithWindSustained} with windsustainedSpeeds`)
+    } else {
+      console.log(`Polar view: Drew ${sustainedSpeedCount} sustained speeds, ${smoothedSpeedCount} smoothed speeds, ${smoothSustainedSpeedCount} smooth sustained speeds, 0 wind-adjusted sustained speeds (disabled)`)
+    }
     
     // Draw legend
     this.drawPolarLegend()
@@ -383,7 +558,42 @@ export class PolarView extends PlotView {
 
     const timeStr = new Date(point.time * 1000).toLocaleTimeString()
     const glideRatio = point.smoothVxs && point.smoothVys ? (point.smoothVxs / Math.abs(point.smoothVys)).toFixed(2) : 'N/A'
-    const text = `Time: ${timeStr}\nHorizontal: ${(point.smoothVxs ?? 0).toFixed(2)} m/s\nVertical: ${(point.smoothVys ?? 0).toFixed(2)} m/s\nGlide Ratio: ${glideRatio}\nRoll: ${((point.smoothRoll ?? 0) * 180 / Math.PI).toFixed(1)}°`
+    
+    // Calculate wind-adjusted sustained speeds for tooltip
+    const filterPoint = point as any
+    let windAdjustedInfo = ''
+    
+    // First try to use pre-calculated wind-adjusted sustained speeds
+    if (filterPoint.windsustainedSpeeds && 
+        filterPoint.windsustainedSpeeds.vxs !== undefined && 
+        filterPoint.windsustainedSpeeds.vys !== undefined) {
+      
+      const windAdjustedGlideRatio = (filterPoint.windsustainedSpeeds.vxs / Math.abs(filterPoint.windsustainedSpeeds.vys)).toFixed(2)
+      windAdjustedInfo = `\nWind-Adj Horizontal: ${filterPoint.windsustainedSpeeds.vxs.toFixed(2)} m/s\nWind-Adj Vertical: ${filterPoint.windsustainedSpeeds.vys.toFixed(2)} m/s\nWind-Adj Glide Ratio: ${windAdjustedGlideRatio}`
+      
+      if (filterPoint.windEstimate) {
+        windAdjustedInfo += `\nWind Estimate: [${filterPoint.windEstimate.x.toFixed(1)}, ${filterPoint.windEstimate.y.toFixed(1)}, ${filterPoint.windEstimate.z.toFixed(1)}] m/s`
+      }
+    }
+    // Fallback: calculate if not pre-calculated
+    else if (filterPoint.windEstimate && filterPoint.smoothVelN && filterPoint.accelZ) {
+      const windAdjustedSpeeds = this.calculateWindAdjustedSustainedSpeeds(
+        filterPoint.smoothVelN,
+        filterPoint.smoothVelE, 
+        filterPoint.smoothVelD,
+        filterPoint.accelZ,  // North acceleration
+        filterPoint.accelX,  // East acceleration
+        -filterPoint.accelY, // Down acceleration (negate ENU Y to get NED D)
+        filterPoint.windEstimate
+      )
+      
+      if (windAdjustedSpeeds) {
+        const windAdjustedGlideRatio = (windAdjustedSpeeds.vxs / Math.abs(windAdjustedSpeeds.vys)).toFixed(2)
+        windAdjustedInfo = `\nWind-Adj Horizontal: ${windAdjustedSpeeds.vxs.toFixed(2)} m/s\nWind-Adj Vertical: ${windAdjustedSpeeds.vys.toFixed(2)} m/s\nWind-Adj Glide Ratio: ${windAdjustedGlideRatio}\nWind Estimate: [${filterPoint.windEstimate.x.toFixed(1)}, ${filterPoint.windEstimate.y.toFixed(1)}, ${filterPoint.windEstimate.z.toFixed(1)}] m/s`
+      }
+    }
+    
+    const text = `Time: ${timeStr}\nHorizontal: ${(point.smoothVxs ?? 0).toFixed(2)} m/s\nVertical: ${(point.smoothVys ?? 0).toFixed(2)} m/s\nGlide Ratio: ${glideRatio}\nRoll: ${((point.smoothRoll ?? 0) * 180 / Math.PI).toFixed(1)}°${windAdjustedInfo}`
     const lines = text.split('\n')
     
     const padding = 8
@@ -429,14 +639,19 @@ export class PolarView extends PlotView {
       { name: 'Smooth Sustained Speeds', color: '#800080' }
     ]
 
-    const legendX = this.canvas.width - 200
+    // Only add wind-adjusted sustained speeds to legend if enabled
+    if (this.showWindAdjustedSustainedSpeeds) {
+      speedTypes.push({ name: 'Wind-Adjusted Sustained Speeds', color: '#ff8800' })
+    }
+
+    const legendX = this.canvas.width - 250
     const legendY = 30
     const lineHeight = 25
     const legendHeight = speedTypes.length * lineHeight + 20
 
     // Draw legend background - black transparent like other views
     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
-    this.ctx.fillRect(legendX - 10, legendY - 10, 190, legendHeight)
+    this.ctx.fillRect(legendX - 10, legendY - 10, 240, legendHeight)
 
     // Draw legend items
     this.ctx.font = '12px system-ui'

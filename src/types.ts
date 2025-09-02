@@ -58,6 +58,12 @@ export interface PlotPoint {
   // Sustained speeds (wingsuit aerodynamic velocities)
   vxs?: number  // Sustained horizontal speed (m/s)
   vys?: number  // Sustained vertical speed (m/s)
+  // Wind estimation data (only from Kalman filter)
+  windEstimate?: Vector3  // Estimated wind velocity in ENU coordinates
+  windAdjustedAoA?: number  // Wind-adjusted angle of attack (radians)
+  windAdjustedRoll?: number  // Wind-adjusted roll angle (radians)
+  windsustainedSpeeds?: SustainedSpeeds  // Wind-adjusted sustained speeds
+  windadjustedcoefficients?: Coefficients  // Wind-adjusted aerodynamic coefficients
   // Smoothed GPS speeds (calculated once from CSV data)
   smoothVelN?: number  // Smoothed North velocity (m/s)
   smoothVelE?: number  // Smoothed East velocity (m/s)
@@ -143,7 +149,7 @@ export interface WSEQPolar {
   rotationdifferential?: number,
   is_enabled?: boolean,
   suit?: string,
-  stallpoint?: Coefficients[],
+  stallpoint: Coefficients[],
   //guides?: Guides
   deploypolar?:WSEQPolar,
   archpolar?:WSEQPolar,//canopy=brakes,ws=arch

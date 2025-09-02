@@ -157,6 +157,15 @@ export function altitudeToPressure(altitude: number): number {
   return pressure0 * Math.pow(1 - lapseRate * altitude / temp0, baroExp)
 }
 
+/**
+ * Calculate air density at given altitude and temperature offset
+ */
+export function getrho(altitude: number, temperatureOffset: number = 0): number {
+  const pressure = altitudeToPressure(altitude)
+  const temperature = temp(altitude) + temperatureOffset
+  return pressure / (gasConst / mmAir) / temperature
+}
+
 export interface wsorientationstate{
     vN: number
     vE: number
@@ -168,6 +177,8 @@ export interface wsorientationstate{
     wvE: number
     wvD: number
 }
+
+// expects wse coorsinates outputs filter coordinates
 export function computewindadjustedwsorientation( 
     vN: number,
     vE: number,
@@ -254,7 +265,7 @@ export function computewindadjustedwsorientation(
   //}
   const wsaoa = indexaoa(susi, polar.aoaindexes, polar.aoas) * Math.PI / 180
 
-  const p = {avN, avE, avD , aroll:roll, wsaoa: wsaoa, liftN, liftE, liftD, dragN, dragE, dragD }
+  const p = {windadjustedsustainedspeeds:{vxs:sustained_x,vys:sustained_y},asx:avE, asy:avN, asz:-avD , aroll:roll, aswsaoa: wsaoa, wlx: liftE, wly:-liftD, wlz:liftN, wdx:dragE, wdy:-dragD, wdz:dragN }
   //console.log(p, data)
   return p
 }

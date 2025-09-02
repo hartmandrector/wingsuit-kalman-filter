@@ -197,6 +197,35 @@ export function getCalculationMethod(): CalculationMethod {
   return CalculationMethod.TRAPEZOIDAL
 }
 
+// Wind filter control functions
+export function setWindProcessNoise(value: number): void {
+  const noise = quadraticScale(value) // Use same scaling as main filter
+  if (filterType === 'kalman') {
+    (estimator as KalmanFilter3D).setWindProcessNoise(noise)
+  }
+}
+
+export function setWindMeasurementNoise(value: number): void {
+  const noise = quadraticScale(value) // Use same scaling as main filter  
+  if (filterType === 'kalman') {
+    (estimator as KalmanFilter3D).setWindMeasurementNoise(noise)
+  }
+}
+
+export function getWindProcessNoise(): number {
+  if (filterType === 'kalman') {
+    return (estimator as KalmanFilter3D).getWindProcessNoise()
+  }
+  return 0.1
+}
+
+export function getWindMeasurementNoise(): number {
+  if (filterType === 'kalman') {
+    return (estimator as KalmanFilter3D).getWindMeasurementNoise()
+  }
+  return 1.0
+}
+
 export interface ErrorStats {
   position: {
     min: number
@@ -354,6 +383,12 @@ export function generatePredictedPoints(gpsPoints: MLocation[]): PlotPoint[] {
           // Store sustained speeds
           vxs: vxs,
           vys: filterType === 'kalman' ? (vys ?? 0) : (vys ?? 0), // Convert to ENU (positive up)
+          // Store wind estimation data (only available for Kalman filter)
+          windEstimate: filterType === 'kalman' ? (predicted as any).windEstimate : undefined,
+          windAdjustedAoA: filterType === 'kalman' ? (predicted as any).windAdjustedAoA : undefined,
+          windAdjustedRoll: filterType === 'kalman' ? (predicted as any).windAdjustedRoll : undefined,
+          windsustainedSpeeds: filterType === 'kalman' ? (predicted as any).windsustainedSpeeds : undefined,
+          windadjustedcoefficients: filterType === 'kalman' ? (predicted as any).windadjustedcoefficients : undefined,
           // Add smoothed GPS speeds and accelerations from closest GPS point
           smoothVelN: closestGpsPoint.smoothVelN,
           smoothVelE: closestGpsPoint.smoothVelE,

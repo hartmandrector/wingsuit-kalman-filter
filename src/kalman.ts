@@ -8,10 +8,11 @@ import {
   transpose,
   matrixInverse
 } from './matrix.js'
-import { Vector3, MLocation, Coefficients } from './types.js'
+import { Vector3, MLocation, Coefficients, WSEQPolar } from './types.js'
 import { MotionState } from './motionestimator.js'
-import { calculateWingsuitAcceleration, calculateWingsuitParameters, gravity } from './wse.js'
-import { vec, sub } from './vector.js'
+import { calculateWingsuitAcceleration, calculateWingsuitParameters, gravity, computewindadjustedwsorientation, rho0 } from './wse.js'
+import { vec, sub, add } from './vector.js'
+import { aurafivepolar } from './polar-library.js'
 
 export enum CalculationMethod {
   TRAPEZOIDAL = 'trapezoidal',
@@ -34,6 +35,15 @@ export class KalmanFilter3D {
   private aMeasured: Vector3 = { x: 0, y: 0, z: 0 }
   private aWSE: Vector3 = { x: 0, y: 0, z: 0 }
   
+  // Wind estimation components
+  private windFilter: WindKalmanFilter
+  private polar: WSEQPolar = aurafivepolar // Default polar
+  private estimatedWind: Vector3 = { x: 0, y: 0, z: 0 }
+  private windAdjustedAoA: number = 0
+  private windAdjustedRoll: number = 0
+  private windsustainedSpeeds: { vxs: number, vys: number } = { vxs: 0, vys: 0 }
+  private windadjustedcoefficients: Coefficients = { cl: 0, cd: 0 }
+  
   // Measurement noise offsets for user control
   private measurementNoiseOffsets = {
     position: 0,
@@ -47,6 +57,9 @@ export class KalmanFilter3D {
     this.state[9] = 0.01 // Initial kl estimate for wingsuit
     this.state[10] = 0.01 // Initial kd estimate for wingsuit
     this.state[11] = 0.0 // Initial roll estimate for wingsuit
+
+    // Initialize wind filter
+    this.windFilter = new WindKalmanFilter()
 
     // Covariance matrix (12x12)
     this.P = createIdentityMatrix(12)
@@ -349,10 +362,16 @@ export class KalmanFilter3D {
     this.updateWingsuitParameters(vn_kalma, ve_kalma, vd_kalma, an_kalma, ae_kalma, ad_kalma)
 
 
- // Calculate and store WSE acceleration for plotting
+    // Calculate and store WSE acceleration for plotting
     const kl = this.state[9], kd = this.state[10], roll = this.state[11]
     const [aWSE_x, aWSE_y, aWSE_z] = calculateWingsuitAcceleration(vz, vx, -vy, kl, kd, roll)
     this.aWSE = { x: aWSE_x, y: aWSE_y, z: aWSE_z }
+
+    // Update wind estimation using the time delta
+    if (this.lastUpdateTime !== undefined) {
+      const deltaTime = (timestamp - this.lastUpdateTime) / 1000
+      this.updateWindEstimation(deltaTime)
+    }
 
      console.log(`Kalman State update at ${timestamp}:`, {
       position: { x: this.state[0], y: this.state[1], z: this.state[2] },
@@ -360,10 +379,9 @@ export class KalmanFilter3D {
       acceleration: { x: this.state[6], y: this.state[7], z: this.state[8] },
       kl: this.state[9],
       kd: this.state[10],
-      rolldeg: this.state[11] * 180 / Math.PI
-    })
-
-    // Update covariance: P = (I - K*H)*P
+      rolldeg: this.state[11] * 180 / Math.PI,
+      windEstimate: this.estimatedWind
+    })    // Update covariance: P = (I - K*H)*P
     const KH = matrixMultiply(K, H)
     const I_KH = matrixSubtract(createIdentityMatrix(12), KH)
     this.P = matrixMultiply(I_KH, this.P)
@@ -389,7 +407,8 @@ export class KalmanFilter3D {
     this.state[11] = roll
   }
 
-  getState(): MotionState & { kl: number, kd: number, roll: number } {
+  getState(): MotionState & { kl: number, kd: number, roll: number, windEstimate?: Vector3, windAdjustedAoA?: number, windAdjustedRoll: number, windsustainedSpeeds: { vxs: number, vys: number }, windadjustedcoefficients: Coefficients } {
+    const windData = this.getWindEstimate()
     return {
       position: { x: this.state[0], y: this.state[1], z: this.state[2] },
       velocity: { x: this.state[3], y: this.state[4], z: this.state[5] },
@@ -398,11 +417,16 @@ export class KalmanFilter3D {
       aWSE: this.aWSE,
       kl: this.state[9],
       kd: this.state[10],
-      roll: this.state[11]
+      roll: this.state[11],
+      windEstimate: windData.windEstimate,
+      windAdjustedAoA: windData.windAdjustedAoA,
+      windAdjustedRoll: windData.windAdjustedRoll,
+      windsustainedSpeeds: windData.windsustainedSpeeds,
+      windadjustedcoefficients: windData.windadjustedcoefficients
     }
   }
 
-  predictAt(timestamp: number): (MotionState & { kl: number, kd: number, roll: number }) | undefined {
+  predictAt(timestamp: number): (MotionState & { kl: number, kd: number, roll: number, windEstimate?: Vector3, windAdjustedAoA?: number, windAdjustedRoll: number, windsustainedSpeeds: { vxs: number, vys: number }, windadjustedcoefficients: Coefficients }) | undefined {
     if (this.lastUpdateTime === undefined) return undefined
     let result
     const deltaTime = (timestamp - this.lastUpdateTime) / 1000
@@ -411,6 +435,7 @@ export class KalmanFilter3D {
 
     // Predict forward
     const sstate = this.predictstate(deltaTime)
+    const windData = this.getWindEstimate()
     result = {
       position: { x: sstate[0], y: sstate[1], z: sstate[2] },
       velocity: { x: sstate[3], y: sstate[4], z: sstate[5] },
@@ -419,7 +444,12 @@ export class KalmanFilter3D {
       aWSE: this.aWSE,
       kl: sstate[9],
       kd: sstate[10],
-      roll: sstate[11]
+      roll: sstate[11],
+      windEstimate: windData.windEstimate,
+      windAdjustedAoA: windData.windAdjustedAoA,
+      windAdjustedRoll: windData.windAdjustedRoll,
+      windsustainedSpeeds: windData.windsustainedSpeeds,
+      windadjustedcoefficients: windData.windadjustedcoefficients
     }
 
     return result
@@ -439,6 +469,12 @@ export class KalmanFilter3D {
     this.P[9][9] = 0.01   // kl uncertainty
     this.P[10][10] = 0.01 // kd uncertainty  
     this.P[11][11] = 0.005 // roll uncertainty
+
+    // Reset wind estimation
+    this.windFilter.reset()
+    this.estimatedWind = { x: 0, y: 0, z: 0 }
+    this.windAdjustedAoA = 0
+    this.windAdjustedRoll = 0
 
     // Reset timestamps and origin
     this.lastUpdateTime = undefined
@@ -474,6 +510,191 @@ export class KalmanFilter3D {
     return this.calculationMethod
   }
 
+  // Wind estimation functions
+  private estimateWindAccel(stateAccel: Vector3, expectedAccel: Vector3): Vector3 {
+    return sub(stateAccel, expectedAccel)
+  }
+
+  private updateWindEstimation(deltaTime: number): void {
+    // Get current state
+    const velocity: Vector3 = { x: this.state[3], y: this.state[4], z: this.state[5] }
+    const acceleration: Vector3 = { x: this.state[6], y: this.state[7], z: this.state[8] }
+    
+    console.log('Wind Estimation Step 1 - Current State:', {
+      velocity: velocity,
+      acceleration: acceleration,
+      currentWindEstimate: this.estimatedWind
+    })
+    
+    // Step 1: Use current wind estimate to get wind-adjusted velocity
+    const airspeedVelocity = add(velocity, this.estimatedWind)
+    
+    console.log('Wind Estimation Step 2 - Airspeed Velocity:', {
+      groundVelocity: velocity,
+      windEstimate: this.estimatedWind,
+      airspeedVelocity: airspeedVelocity
+    })
+    
+    // Step 2: Find best-fit aerodynamic model using wind-adjusted velocity
+    const candidates: Coefficients[] = []
+    const aoas: number[] = []
+    
+    // Generate candidate coefficients from polar (simplified approach)
+    for (let i = 0; i < this.polar.aoas.length; i++) {
+      const aoa = this.polar.aoas[i] // Use actual AoA from polar
+      const c = this.polar.stallpoint[i] // Use actual Cl from polar
+      const cl = c.cl
+      const cd = c.cd
+      candidates.push({ cl, cd })
+      aoas.push(aoa)
+    }
+    
+    const rho = 0.9
+    const s = this.polar.s   // Wing area (m²) - typical wingsuit
+    const m = this.polar.m  // Mass (kg) - typical pilot + gear
+    
+    const bestFit = this.matchAerodynamicModel(
+      acceleration,
+      airspeedVelocity,
+      this.state[11], // current roll
+      candidates,
+      aoas,
+      rho,
+      s,
+      m
+    )
+    
+    console.log('Wind Estimation Step 3 - Best Fit Model:', {
+      bestCoefficients: bestFit.bestCoeff,
+      bestAoA: bestFit.aoa,
+      expectedAcceleration: bestFit.expectedAccel,
+      measuredAcceleration: acceleration
+    })
+    
+    // Step 3: Calculate wind residual
+    const windAccel = this.estimateWindAccel(acceleration, bestFit.expectedAccel)
+    
+    console.log('Wind Estimation Step 4 - Wind Residual:', {
+      windAccelerationResidual: windAccel,
+      windFilterProcessNoise: this.windFilter.getProcessNoise(),
+      windFilterMeasurementNoise: this.windFilter.getMeasurementNoise()
+    })
+    
+    // Step 4: Update wind filter
+    this.windFilter.predict()
+    this.windFilter.update(windAccel)
+    
+    // Step 5: Get updated wind estimate
+    const previousWind = { ...this.estimatedWind }
+    this.estimatedWind = this.windFilter.getWindVelocity()
+    
+    console.log('Wind Estimation Step 5 - Updated Wind Estimate:', {
+      previousWind: previousWind,
+      newWindEstimate: this.estimatedWind,
+      windChange: {
+        x: this.estimatedWind.x - previousWind.x,
+        y: this.estimatedWind.y - previousWind.y,
+        z: this.estimatedWind.z - previousWind.z
+      }
+    })
+    
+    // Step 6: Update wind-adjusted parameters using the WSE function
+    const windAdjustedorientation = computewindadjustedwsorientation(
+      velocity.z,    // vN (North)
+      velocity.x,    // vE (East) 
+      -velocity.y,   // vD (Down - note sign flip)
+      acceleration.z, // aN
+      acceleration.x, // aE
+      -acceleration.y, // aD
+      this.estimatedWind.z,  // wvN
+      this.estimatedWind.x,  // wvE
+      -this.estimatedWind.y, // wvD
+      rho,
+      this.polar
+    )
+    
+    // Store wind-adjusted parameters
+    const previousAoA = this.windAdjustedAoA
+    const previousRoll = this.windAdjustedRoll
+    const wsp = calculateWingsuitParameters(
+      velocity.z + this.estimatedWind.z,
+      velocity.x + this.estimatedWind.x,
+      -velocity.y - this.estimatedWind.y,
+      acceleration.z,
+      acceleration.x,
+      -acceleration.y,
+      bestFit.bestCoeff.cl,
+      bestFit.bestCoeff.cd,
+      this.state[11]
+    )
+    this.windAdjustedAoA = windAdjustedorientation.aswsaoa
+    this.windadjustedcoefficients = bestFit.bestCoeff
+    this.windsustainedSpeeds = { vxs: windAdjustedorientation.windadjustedsustainedspeeds.vxs, vys: windAdjustedorientation.windadjustedsustainedspeeds.vys }
+    this.windAdjustedRoll = windAdjustedorientation.aroll
+    
+    console.log('Wind Estimation Step 6 - Wind-Adjusted Parameters:', {
+      windAdjustedAoA: {
+        previous: previousAoA * 180 / Math.PI,
+        new: this.windAdjustedAoA * 180 / Math.PI,
+        change: (this.windAdjustedAoA - previousAoA) * 180 / Math.PI
+      },
+      windAdjustedRoll: {
+        previous: previousRoll * 180 / Math.PI,
+        new: this.windAdjustedRoll * 180 / Math.PI,
+        change: (this.windAdjustedRoll - previousRoll) * 180 / Math.PI
+      }
+    })
+    
+    console.log('Wind Estimation Complete - Summary:', {
+      finalWindVelocity: this.estimatedWind,
+      windSpeed: Math.sqrt(this.estimatedWind.x ** 2 + this.estimatedWind.y ** 2 + this.estimatedWind.z ** 2),
+      windDirection: Math.atan2(this.estimatedWind.x, this.estimatedWind.z) * 180 / Math.PI,
+      windInclination: Math.asin(this.estimatedWind.y / Math.sqrt(this.estimatedWind.x ** 2 + this.estimatedWind.y ** 2 + this.estimatedWind.z ** 2)) * 180 / Math.PI,
+      windAdjustedAoADeg: this.windAdjustedAoA * 180 / Math.PI,
+      windAdjustedRollDeg: this.windAdjustedRoll * 180 / Math.PI
+    })
+  }
+
+  // Get wind estimation results
+  getWindEstimate(): { 
+    windEstimate: Vector3,
+    windAdjustedAoA: number,
+    windAdjustedRoll: number,
+    windsustainedSpeeds: { vxs: number, vys: number },
+    windadjustedcoefficients: Coefficients
+  } {
+  
+    return {
+      windEstimate: this.estimatedWind,
+      windAdjustedAoA: this.windAdjustedAoA,
+      windAdjustedRoll: this.windAdjustedRoll,
+      windsustainedSpeeds: this.windsustainedSpeeds,
+      windadjustedcoefficients: this.windadjustedcoefficients
+    }
+  }
+
+  // Set custom polar for wind estimation
+  setPolar(polar: WSEQPolar): void {
+    this.polar = polar
+  }
+
+  // Wind filter noise control methods
+  setWindProcessNoise(noise: number): void {
+    this.windFilter.setProcessNoise(noise)
+  }
+
+  setWindMeasurementNoise(noise: number): void {
+    this.windFilter.setMeasurementNoise(noise)
+  }
+
+  getWindProcessNoise(): number {
+    return this.windFilter.getProcessNoise()
+  }
+
+  getWindMeasurementNoise(): number {
+    return this.windFilter.getMeasurementNoise()
+  }
+
   // match filter state to polar!  todo: roll first to get direction then coeffs...
 public matchAerodynamicModel(
   measuredAccel: Vector3,// from filter
@@ -489,13 +710,24 @@ public matchAerodynamicModel(
   let best = candidates[0];
   let bestAccel = vec();
   let bestaoa = 0;
+  
+  console.log('Aerodynamic Model Matching - Input Parameters:', {
+    measuredAcceleration: measuredAccel,
+    velocity: velocity,
+    rollDeg: roll * 180 / Math.PI,
+    speed: Math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2),
+    candidateCount: candidates.length,
+    rho: rho,
+    wingArea: s,
+    mass: m
+  })
 
   for (let i=0; i<candidates.length; i++) {
     const candidate = candidates[i];
     const k = .5 * rho* s / m
     const kl = candidate.cl * k / gravity
     const kd = candidate.cd * k / gravity
-    const predictedAccelArr = calculateWingsuitAcceleration(velocity.z, velocity.x, -velocity.y, roll, kl,kd);
+    const predictedAccelArr = calculateWingsuitAcceleration(velocity.z, velocity.x, -velocity.y, kl,kd,roll);
     const predictedAccel: Vector3 = { x: predictedAccelArr[0], y: predictedAccelArr[1], z: predictedAccelArr[2] };
     const diff = sub(measuredAccel, predictedAccel);
     const residual = Math.sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
@@ -507,6 +739,15 @@ public matchAerodynamicModel(
       bestaoa = aoas[i];
     }
   }
+  
+  console.log('Aerodynamic Model Matching - Best Fit Results:', {
+    bestCoefficients: best,
+    bestAoADeg: bestaoa,
+    minResidual: minResidual,
+    expectedAcceleration: bestAccel,
+    residualVector: sub(measuredAccel, bestAccel),
+   
+  })
 
   return { bestCoeff: best, expectedAccel: bestAccel, aoa: bestaoa};
 }
@@ -526,18 +767,36 @@ export class WindKalmanFilter {
     this.processNoise = createIdentityMatrix(3)
     this.measurementNoise = createIdentityMatrix(3)
   
+    // Default noise values - can be adjusted via sliders
     for (let i = 0; i < 3; i++) {
-      this.processNoise[i][i] = 0.1 // Wind process noise
-      this.measurementNoise[i][i] = 1.0 // Wind measurement noise
+      this.processNoise[i][i] = 0.1 // Wind process noise (how quickly wind changes)
+      this.measurementNoise[i][i] = 1.0 // Wind measurement noise (trust in wind acceleration residual)
     }
   }
 
   predict(): void {
+    console.log('WindKalmanFilter Predict - Before:', {
+      windState: [...this.state],
+      covariance: this.covariance.map(row => [...row]),
+      processNoise: this.processNoise[0][0]
+    })
+    
     // Assume wind evolves slowly - add process noise to covariance
     this.covariance = matrixAdd(this.covariance, this.processNoise)
+    
+    console.log('WindKalmanFilter Predict - After:', {
+      windState: [...this.state],
+      covariance: this.covariance.map(row => [...row])
+    })
   }
 
   update(measuredWindAccel: Vector3): void {
+    console.log('WindKalmanFilter Update - Input:', {
+      measuredWindAcceleration: measuredWindAccel,
+      currentWindState: [...this.state],
+      measurementNoise: this.measurementNoise[0][0]
+    })
+    
     // Create measurement vector from Vector3
     const measurement = [measuredWindAccel.x, measuredWindAccel.y, measuredWindAccel.z]
     
@@ -546,6 +805,13 @@ export class WindKalmanFilter {
     
     // Innovation: z - H*x
     const innovation = measurement.map((z, i) => z - this.state[i])
+    
+    console.log('WindKalmanFilter Update - Innovation:', {
+      measurement: measurement,
+      predicted: [...this.state],
+      innovation: innovation,
+      innovationMagnitude: Math.sqrt(innovation.reduce((sum, val) => sum + val * val, 0))
+    })
     
     // Innovation covariance: S = H*P*H^T + R
     const HP = matrixMultiply(H, this.covariance)
@@ -557,8 +823,14 @@ export class WindKalmanFilter {
     const S_inv = matrixInverse(S)
     const K = matrixMultiply(PHT, S_inv)
     
+    console.log('WindKalmanFilter Update - Kalman Gain:', {
+      kalmanGain: K.map(row => [...row]),
+      innovationCovariance: S.map(row => [...row])
+    })
+    
     // Update state: x = x + K*innovation
     const Ky = matrixVectorMultiply(K, innovation)
+    const oldState = [...this.state]
     for (let i = 0; i < 3; i++) {
       this.state[i] += Ky[i]
     }
@@ -567,6 +839,37 @@ export class WindKalmanFilter {
     const KH = matrixMultiply(K, H)
     const I_KH = matrixSubtract(createIdentityMatrix(3), KH)
     this.covariance = matrixMultiply(I_KH, this.covariance)
+    
+    console.log('WindKalmanFilter Update - Final State:', {
+      oldWindState: oldState,
+      newWindState: [...this.state],
+      stateChange: this.state.map((val, i) => val - oldState[i]),
+      windSpeed: Math.sqrt(this.state[0] ** 2 + this.state[1] ** 2 + this.state[2] ** 2),
+      windDirection: Math.atan2(this.state[0], this.state[2]) * 180 / Math.PI,
+      updatedCovariance: this.covariance.map(row => [...row])
+    })
+  }
+
+  // Noise parameter setters for slider control
+  setProcessNoise(noise: number): void {
+    for (let i = 0; i < 3; i++) {
+      this.processNoise[i][i] = noise
+    }
+  }
+
+  setMeasurementNoise(noise: number): void {
+    for (let i = 0; i < 3; i++) {
+      this.measurementNoise[i][i] = noise
+    }
+  }
+
+  // Getters for current noise values (for UI display)
+  getProcessNoise(): number {
+    return this.processNoise[0][0]
+  }
+
+  getMeasurementNoise(): number {
+    return this.measurementNoise[0][0]
   }
 
   getWindVelocity(): Vector3 {

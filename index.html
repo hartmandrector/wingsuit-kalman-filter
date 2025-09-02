@@ -51,6 +51,10 @@
               <option value="ae">AE (East Acceleration)</option>
               <option value="ad">AD (Down Acceleration)</option>
               <option value="roll">Roll (Angle)</option>
+              <option value="windN">Wind N (North Wind)</option>
+              <option value="windE">Wind E (East Wind)</option>
+              <option value="windD">Wind D (Down Wind)</option>
+              <option value="windSpeed">Wind Speed (Magnitude)</option>
             </select>
           </div>
           <canvas id="speed-comparison-canvas" width="800" height="600"></canvas>
@@ -121,6 +125,22 @@
             <div id="kalman-r-velocity-control">
               <label for="kalman-r-velocity-slider">Velocity Offset: <span id="kalman-r-velocity-value">0.64</span></label>
               <input type="range" id="kalman-r-velocity-slider" min="-1" max="1" step="0.01" value="0.15">
+            </div>
+            
+            <h4>Wind Filter Noise</h4>
+            <div id="wind-process-noise-control">
+              <label for="wind-process-noise-slider">Wind Process Noise: <span id="wind-process-noise-value">0.10</span></label>
+              <input type="range" id="wind-process-noise-slider" min="0" max="1" step="0.01" value="0.32">
+            </div>
+            <div id="wind-measurement-noise-control">
+              <label for="wind-measurement-noise-slider">Wind Measurement Noise: <span id="wind-measurement-noise-value">1.00</span></label>
+              <input type="range" id="wind-measurement-noise-slider" min="0" max="1" step="0.01" value="0.63">
+            </div>
+            <div id="wind-display-control">
+              <label for="show-wind-adjusted-checkbox">
+                <input type="checkbox" id="show-wind-adjusted-checkbox" checked>
+                Show Wind-Adjusted Sustained Speeds
+              </label>
             </div>
           </div>
 

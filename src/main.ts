@@ -13,11 +13,13 @@ import {
   setKalmanProcessNoiseAcceleration,
   setKalmanMeasurementNoisePosition,
   setKalmanMeasurementNoiseVelocity,
+  setWindProcessNoise,
+  setWindMeasurementNoise,
   setCalculationMethod,
   getCalculationMethod,
+  quadraticScaleDisplay,
   signedQuadraticScale,
   signedQuadraticScaleVelocityDisplay,
-  quadraticScaleDisplay,
   quadraticScaleAccelerationDisplay
 } from './predict.js'
 import { setReference, latLonAltToENU } from './enu.js'
@@ -460,6 +462,40 @@ if (kalmanRVelocitySlider && kalmanRVelocityValue) {
     const scaledValue = signedQuadraticScaleVelocityDisplay(value)
     kalmanRVelocityValue.textContent = scaledValue.toFixed(2)
     setKalmanMeasurementNoiseVelocity(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+// Wind filter noise sliders
+const windProcessNoiseSlider = document.getElementById('wind-process-noise-slider') as HTMLInputElement
+const windProcessNoiseValue = document.getElementById('wind-process-noise-value') as HTMLElement
+const windMeasurementNoiseSlider = document.getElementById('wind-measurement-noise-slider') as HTMLInputElement
+const windMeasurementNoiseValue = document.getElementById('wind-measurement-noise-value') as HTMLElement
+
+if (windProcessNoiseSlider && windProcessNoiseValue) {
+  windProcessNoiseSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScaleDisplay(value)
+    windProcessNoiseValue.textContent = scaledValue.toFixed(3)
+    setWindProcessNoise(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (windMeasurementNoiseSlider && windMeasurementNoiseValue) {
+  windMeasurementNoiseSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScaleDisplay(value)
+    windMeasurementNoiseValue.textContent = scaledValue.toFixed(3)
+    setWindMeasurementNoise(value)
     
     if (currentGpsPoints.length > 0) {
       regeneratePlot()

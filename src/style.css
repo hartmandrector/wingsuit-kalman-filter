@@ -185,7 +185,8 @@ h1 {
   font-weight: normal;
 }
 
-#speed-selector-container {
+#speed-selector-container,
+#polar-controls {
   display: flex;
   align-items: center;
   justify-content: center;
