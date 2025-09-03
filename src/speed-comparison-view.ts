@@ -2,7 +2,7 @@ import { PlotView } from './plot-view-base.js'
 import { PlotSeries, PlotPoint } from './types.js'
 
 export class SpeedComparisonView extends PlotView {
-  private selectedComponent: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll' | 'windN' | 'windE' | 'windD' | 'windSpeed' = 'vn'
+  private selectedComponent: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll' | 'windN' | 'windE' | 'windD' | 'windSpeed' | 'windAoA' = 'vn'
   private minTime: number = 0
   private maxTime: number = 0
   private minSpeed: number = 0
@@ -122,7 +122,8 @@ export class SpeedComparisonView extends PlotView {
         case 'windE':
         case 'windD':
         case 'windSpeed':
-          // Acceleration components, roll, and wind components are only available in filter data, not GPS data
+        case 'windAoA':
+          // Acceleration components, roll, wind components, and wind AoA are only available in filter data, not GPS data
           vel = undefined
           smoothVel = undefined
           break
@@ -207,6 +208,13 @@ export class SpeedComparisonView extends PlotView {
               mlocation.windEstimate.y ** 2 + 
               mlocation.windEstimate.z ** 2
             )
+          }
+          break
+        case 'windAoA':
+          // Wind-adjusted angle of attack from wind estimation
+          if (mlocation.windAdjustedAoA !== undefined) {
+            // Convert from radians to degrees
+            filterVel = mlocation.windAdjustedAoA * 180 / Math.PI
           }
           break
       }
@@ -378,6 +386,15 @@ export class SpeedComparisonView extends PlotView {
           value = 0
         }
         break
+      case 'windAoA':
+        // Wind-adjusted angle of attack from wind estimation
+        if (mlocation.windAdjustedAoA !== undefined) {
+          // Convert from radians to degrees
+          value = mlocation.windAdjustedAoA * 180 / Math.PI
+        } else {
+          value = 0
+        }
+        break
     }
     
     const y = margin + plotHeight - ((value - minViewSpeed) / (maxViewSpeed - minViewSpeed)) * plotHeight
@@ -385,7 +402,7 @@ export class SpeedComparisonView extends PlotView {
     return { x, y }
   }
 
-  setSelectedComponent(component: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll' | 'windN' | 'windE' | 'windD' | 'windSpeed') {
+  setSelectedComponent(component: 'vn' | 've' | 'vd' | 'an' | 'ae' | 'ad' | 'roll' | 'windN' | 'windE' | 'windD' | 'windSpeed' | 'windAoA') {
     this.selectedComponent = component
     this.boundsInitialized = false
     this.renderPlot()
@@ -470,6 +487,9 @@ export class SpeedComparisonView extends PlotView {
     if (isRoll) {
       units = '(deg)'
       label = `Roll Angle ${units}`
+    } else if (this.selectedComponent === 'windAoA') {
+      units = '(deg)'
+      label = `Wind-Adjusted AoA ${units}`
     } else if (isAcceleration) {
       units = '(m/s²)'
       label = `${componentName} Acceleration ${units}`
@@ -505,7 +525,7 @@ export class SpeedComparisonView extends PlotView {
     const minViewSpeed = centerSpeed + this.panY - viewSpeedRange / 2
     const maxViewSpeed = centerSpeed + this.panY + viewSpeedRange / 2
 
-    // For roll angle and wind components, only draw filter data (green)
+    // For roll angle, wind components, and wind AoA, only draw filter data (green)
     if (this.selectedComponent === 'roll' || this.selectedComponent.startsWith('wind')) {
       if (filterData.length > 0) {
         this.drawDataSeries(filterData, '#00ff44', 'filter', margin, plotWidth, plotHeight, 
@@ -631,6 +651,13 @@ export class SpeedComparisonView extends PlotView {
               )
             }
             return undefined
+          case 'windAoA':
+            // Wind-adjusted angle of attack from wind estimation
+            if (mlocation.windAdjustedAoA !== undefined) {
+              // Convert from radians to degrees
+              return mlocation.windAdjustedAoA * 180 / Math.PI
+            }
+            return undefined
           default: return undefined
         }
       case 'measured':
@@ -675,6 +702,9 @@ export class SpeedComparisonView extends PlotView {
     if (isRoll) {
       // For roll, only show one series
       legendItems = [{ color: '#00ff44', label: 'Roll Angle' }]
+    } else if (this.selectedComponent === 'windAoA') {
+      // For wind-adjusted AoA, only show one series
+      legendItems = [{ color: '#00ff44', label: 'Wind-Adjusted AoA' }]
     } else if (isWind) {
       // For wind components, only show one series
       const windComponent = this.selectedComponent.slice(4) // Remove 'wind' prefix
@@ -766,6 +796,10 @@ export class SpeedComparisonView extends PlotView {
       // For roll, only show the roll angle
       const rollVal = this.getValueForType(this.hoveredPoint, 'filter')
       if (rollVal !== undefined) tooltipLines.push(`Roll Angle: ${rollVal.toFixed(1)}°`)
+    } else if (this.selectedComponent === 'windAoA') {
+      // For wind-adjusted AoA, only show the AoA value
+      const aoaVal = this.getValueForType(this.hoveredPoint, 'filter')
+      if (aoaVal !== undefined) tooltipLines.push(`Wind-Adjusted AoA: ${aoaVal.toFixed(1)}°`)
     } else if (isWind) {
       // For wind components, only show the wind value
       const windVal = this.getValueForType(this.hoveredPoint, 'filter')

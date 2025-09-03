@@ -543,7 +543,7 @@ export class KalmanFilter3D {
     this.windAdjustedRoll = windAdjustedorientation.aroll
   }
 
-  // Optimize wind velocity to minimize acceleration residual
+  // Optimize wind velocity using gradient descent to minimize a composite objective function
   private optimizeWindVelocity(velocity: Vector3, measuredAccel: Vector3): {
     windVelocity: Vector3,
     bestCoeff: Coefficients,
@@ -564,54 +564,129 @@ export class KalmanFilter3D {
     const s = this.polar.s
     const m = this.polar.m
     
-    let bestWindVelocity = { ...this.estimatedWind }
-    let bestCoefficients = candidates[0]
-    let minResidual = Infinity
+    // Define objective function that balances wind speed minimization and acceleration fit
+    const objectiveFunction = (wind: Vector3): { cost: number, coeff: Coefficients, residual: number } => {
+      const airspeedVelocity = add(velocity, wind)
+      
+      const bestFit = this.matchAerodynamicModel(
+        measuredAccel,
+        airspeedVelocity,
+        this.state[11], // current roll
+        candidates,
+        aoas,
+        rho,
+        s,
+        m
+      )
+      
+      const residual = Math.sqrt(
+        Math.pow(measuredAccel.x - bestFit.expectedAccel.x, 2) +
+        Math.pow(measuredAccel.y - bestFit.expectedAccel.y, 2) +
+        Math.pow(measuredAccel.z - bestFit.expectedAccel.z, 2)
+      )
+      
+      const windSpeed = Math.sqrt(wind.x * wind.x + wind.y * wind.y + wind.z * wind.z)
+      
+      // Composite cost function: prioritize good fit but penalize high wind speeds
+      // Scale factors can be tuned based on your preferences
+      const residualWeight = 100.0  // Strong penalty for poor acceleration fit
+      const windSpeedWeight = 1.0   // Moderate penalty for high wind speeds
+      const cost = residualWeight * residual * residual + windSpeedWeight * windSpeed * windSpeed
+      
+      return { cost, coeff: bestFit.bestCoeff, residual }
+    }
     
-    // Much smaller search grid to prevent browser freeze
-    const searchRange = 2.0 // m/s search range (reduced from 5.0)
-    const searchStep = 2.0  // m/s search step (increased from 1.0)
+    // Gradient descent optimization
+    let currentWind = { ...this.estimatedWind }
+    let learningRate = 0.05  // Start with small learning rate
+    const maxIterations = 50
+    const convergenceThreshold = 1e-6
+    const epsilon = 1e-4  // For numerical gradient calculation
     
-    for (let wx = this.estimatedWind.x - searchRange; wx <= this.estimatedWind.x + searchRange; wx += searchStep) {
-      for (let wy = this.estimatedWind.y - searchRange; wy <= this.estimatedWind.y + searchRange; wy += searchStep) {
-        for (let wz = this.estimatedWind.z - searchRange; wz <= this.estimatedWind.z + searchRange; wz += searchStep) {
-          const candidateWind: Vector3 = { x: wx, y: wy, z: wz }
-          
-          // Calculate airspeed velocity with this wind candidate
-          const airspeedVelocity = add(velocity, candidateWind)
-          
-          // Find best-fit aerodynamic model for this airspeed
-          const bestFit = this.matchAerodynamicModel(
-            measuredAccel,
-            airspeedVelocity,
-            this.state[11], // current roll
-            candidates,
-            aoas,
-            rho,
-            s,
-            m
-          )
-          
-          // Calculate residual between measured and predicted acceleration
-          const residual = Math.sqrt(
-            Math.pow(measuredAccel.x - bestFit.expectedAccel.x, 2) +
-            Math.pow(measuredAccel.y - bestFit.expectedAccel.y, 2) +
-            Math.pow(measuredAccel.z - bestFit.expectedAccel.z, 2)
-          )
-          
-          if (residual < minResidual) {
-            minResidual = residual
-            bestWindVelocity = candidateWind
-            bestCoefficients = bestFit.bestCoeff
-          }
+    let bestResult = objectiveFunction(currentWind)
+    let bestWind = { ...currentWind }
+    
+    // Optional: Enable debug logging (set to false for production)
+    const debugLogging = false
+    
+    if (debugLogging) {
+      console.log(`Wind optimization starting - Initial cost: ${bestResult.cost.toFixed(6)}, residual: ${bestResult.residual.toFixed(6)}`)
+    }
+    
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      // Calculate numerical gradient
+      const gradient = { x: 0, y: 0, z: 0 }
+      
+      // Partial derivative with respect to wind.x
+      const wind_x_plus = { ...currentWind, x: currentWind.x + epsilon }
+      const wind_x_minus = { ...currentWind, x: currentWind.x - epsilon }
+      gradient.x = (objectiveFunction(wind_x_plus).cost - objectiveFunction(wind_x_minus).cost) / (2 * epsilon)
+      
+      // Partial derivative with respect to wind.y
+      const wind_y_plus = { ...currentWind, y: currentWind.y + epsilon }
+      const wind_y_minus = { ...currentWind, y: currentWind.y - epsilon }
+      gradient.y = (objectiveFunction(wind_y_plus).cost - objectiveFunction(wind_y_minus).cost) / (2 * epsilon)
+      
+      // Partial derivative with respect to wind.z
+      const wind_z_plus = { ...currentWind, z: currentWind.z + epsilon }
+      const wind_z_minus = { ...currentWind, z: currentWind.z - epsilon }
+      gradient.z = (objectiveFunction(wind_z_plus).cost - objectiveFunction(wind_z_minus).cost) / (2 * epsilon)
+      
+      // Update wind estimate using gradient descent
+      const newWind = {
+        x: currentWind.x - learningRate * gradient.x,
+        y: currentWind.y - learningRate * gradient.y,
+        z: currentWind.z - learningRate * gradient.z
+      }
+      
+      // Evaluate new position
+      const newResult = objectiveFunction(newWind)
+      
+      // Check if we improved
+      if (newResult.cost < bestResult.cost) {
+        bestResult = newResult
+        bestWind = { ...newWind }
+        currentWind = newWind
+        
+        // Adaptive learning rate: increase if we're improving
+        learningRate = Math.min(learningRate * 1.1, 0.2)
+        
+        if (debugLogging) {
+          const windSpeed = Math.sqrt(newWind.x * newWind.x + newWind.y * newWind.y + newWind.z * newWind.z)
+          console.log(`Iter ${iteration}: Improved! Cost: ${newResult.cost.toFixed(6)}, residual: ${newResult.residual.toFixed(6)}, wind speed: ${windSpeed.toFixed(3)} m/s, LR: ${learningRate.toFixed(6)}`)
         }
+      } else {
+        // Reduce learning rate if we didn't improve
+        learningRate *= 0.5
+        
+        // Stop if learning rate gets too small
+        if (learningRate < 1e-6) {
+          if (debugLogging) {
+            console.log(`Iter ${iteration}: Learning rate too small, stopping optimization`)
+          }
+          break
+        }
+      }
+      
+      // Check for convergence
+      const gradientMagnitude = Math.sqrt(gradient.x * gradient.x + gradient.y * gradient.y + gradient.z * gradient.z)
+      if (gradientMagnitude < convergenceThreshold) {
+        if (debugLogging) {
+          console.log(`Iter ${iteration}: Converged! Gradient magnitude: ${gradientMagnitude.toFixed(8)}`)
+        }
+        break
       }
     }
     
+    if (debugLogging) {
+      const finalWindSpeed = Math.sqrt(bestWind.x * bestWind.x + bestWind.y * bestWind.y + bestWind.z * bestWind.z)
+      console.log(`Wind optimization complete - Final cost: ${bestResult.cost.toFixed(6)}, residual: ${bestResult.residual.toFixed(6)}, wind speed: ${finalWindSpeed.toFixed(3)} m/s`)
+    }
+    
     return {
-      windVelocity: bestWindVelocity,
-      bestCoeff: bestCoefficients,
-      minResidual: minResidual
+      windVelocity: bestWind,
+      bestCoeff: bestResult.coeff,
+      minResidual: bestResult.residual
     }
   }
 
