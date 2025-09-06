@@ -536,8 +536,8 @@ export class KalmanFilter3D {
       this.polar
     )
     
-    // Store wind-adjusted parameters
-    this.windAdjustedAoA = windAdjustedorientation.aswsaoa
+    // Store wind-adjusted parameters - use AoA from optimization instead of computewindadjustedwsorientation
+    this.windAdjustedAoA = optimalWind.bestAoA  // Use the AoA from matchAerodynamicModel optimization
     this.windadjustedcoefficients = optimalWind.bestCoeff
     this.windsustainedSpeeds = { vxs: windAdjustedorientation.windadjustedsustainedspeeds.vxs, vys: windAdjustedorientation.windadjustedsustainedspeeds.vys }
     this.windAdjustedRoll = windAdjustedorientation.aroll
@@ -547,7 +547,8 @@ export class KalmanFilter3D {
   private optimizeWindVelocity(velocity: Vector3, measuredAccel: Vector3): {
     windVelocity: Vector3,
     bestCoeff: Coefficients,
-    minResidual: number
+    minResidual: number,
+    bestAoA: number
   } {
     // Generate candidate coefficients from polar
     const candidates: Coefficients[] = []
@@ -565,7 +566,7 @@ export class KalmanFilter3D {
     const m = this.polar.m
     
     // Define objective function that balances wind speed minimization and acceleration fit
-    const objectiveFunction = (wind: Vector3): { cost: number, coeff: Coefficients, residual: number } => {
+    const objectiveFunction = (wind: Vector3): { cost: number, coeff: Coefficients, residual: number, aoa: number } => {
       const airspeedVelocity = add(velocity, wind)
       
       const bestFit = this.matchAerodynamicModel(
@@ -593,7 +594,7 @@ export class KalmanFilter3D {
       const windSpeedWeight = 1.0   // Moderate penalty for high wind speeds
       const cost = residualWeight * residual * residual + windSpeedWeight * windSpeed * windSpeed
       
-      return { cost, coeff: bestFit.bestCoeff, residual }
+      return { cost, coeff: bestFit.bestCoeff, residual, aoa: bestFit.aoa }
     }
     
     // Gradient descent optimization
@@ -686,7 +687,8 @@ export class KalmanFilter3D {
     return {
       windVelocity: bestWind,
       bestCoeff: bestResult.coeff,
-      minResidual: bestResult.residual
+      minResidual: bestResult.residual,
+      bestAoA: bestResult.aoa
     }
   }
 

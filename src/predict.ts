@@ -9,9 +9,9 @@ import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from '
 let filterType: 'motionestimator' | 'kalman' = 'motionestimator'
 
 // Motion Estimator parameters
-let currentAlpha = 0.9
-let currentAlphaVelocity = 0.9
-let currentAlphaAcceleration = 0.9
+let currentAlpha = 0.12
+let currentAlphaVelocity = 0.18
+let currentAlphaAcceleration = 0.17
 
 // Kalman Filter parameters - matches slider defaults
 let kalmanProcessNoise = {

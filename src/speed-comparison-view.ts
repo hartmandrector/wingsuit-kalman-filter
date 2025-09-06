@@ -213,8 +213,8 @@ export class SpeedComparisonView extends PlotView {
         case 'windAoA':
           // Wind-adjusted angle of attack from wind estimation
           if (mlocation.windAdjustedAoA !== undefined) {
-            // Convert from radians to degrees
-            filterVel = mlocation.windAdjustedAoA * 180 / Math.PI
+            // Already in degrees, no conversion needed
+            filterVel = mlocation.windAdjustedAoA
           }
           break
       }
@@ -389,8 +389,8 @@ export class SpeedComparisonView extends PlotView {
       case 'windAoA':
         // Wind-adjusted angle of attack from wind estimation
         if (mlocation.windAdjustedAoA !== undefined) {
-          // Convert from radians to degrees
-          value = mlocation.windAdjustedAoA * 180 / Math.PI
+          // Already in degrees, no conversion needed
+          value = mlocation.windAdjustedAoA
         } else {
           value = 0
         }
@@ -654,8 +654,8 @@ export class SpeedComparisonView extends PlotView {
           case 'windAoA':
             // Wind-adjusted angle of attack from wind estimation
             if (mlocation.windAdjustedAoA !== undefined) {
-              // Convert from radians to degrees
-              return mlocation.windAdjustedAoA * 180 / Math.PI
+              // Already in degrees, no conversion needed
+              return mlocation.windAdjustedAoA
             }
             return undefined
           default: return undefined
