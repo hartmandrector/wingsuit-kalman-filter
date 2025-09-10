@@ -6,11 +6,16 @@ import {
   setAlpha, 
   setAlphaVelocity, 
   setAlphaAcceleration,
+  setSGFilterLength,
+  getSGFilterLength,
   setFilterType,
   getFilterType,
   setKalmanProcessNoisePosition,
   setKalmanProcessNoiseVelocity,
   setKalmanProcessNoiseAcceleration,
+  setKalmanProcessNoiseKl,
+  setKalmanProcessNoiseKd,
+  setKalmanProcessNoiseRoll,
   setKalmanMeasurementNoisePosition,
   setKalmanMeasurementNoiseVelocity,
   setWindProcessNoise,
@@ -42,31 +47,51 @@ if (dropZone && fileInput) {
 // Setup filter type switcher
 const motionEstimatorRadio = document.getElementById('motion-estimator') as HTMLInputElement | null
 const kalmanFilterRadio = document.getElementById('kalman-filter') as HTMLInputElement | null
+const sgFilterRadio = document.getElementById('sg-filter') as HTMLInputElement | null
 const trapezoidalMethodRadio = document.getElementById('trapezoidal-method') as HTMLInputElement | null
 const standardMethodRadio = document.getElementById('standard-method') as HTMLInputElement | null
 const motionEstimatorControls = document.getElementById('motion-estimator-controls') as HTMLElement | null
 const kalmanFilterControls = document.getElementById('kalman-filter-controls') as HTMLElement | null
+const sgFilterControls = document.getElementById('sg-filter-controls') as HTMLElement | null
 
 function updateControlsVisibility(): void {
   const filterType = getFilterType()
-  if (motionEstimatorControls && kalmanFilterControls) {
+  if (motionEstimatorControls && kalmanFilterControls && sgFilterControls) {
     if (filterType === 'motionestimator') {
       motionEstimatorControls.style.display = 'block'
       kalmanFilterControls.style.display = 'none'
+      sgFilterControls.style.display = 'none'
+    } else if (filterType === 'sgfilter') {
+      motionEstimatorControls.style.display = 'none'
+      kalmanFilterControls.style.display = 'none'
+      sgFilterControls.style.display = 'block'
     } else {
       motionEstimatorControls.style.display = 'none'
       kalmanFilterControls.style.display = 'block'
+      sgFilterControls.style.display = 'none'
     }
   }
 }
 
 function updateCalculationMethodRadioButtons(): void {
   const currentMethod = getCalculationMethod()
+  const filterType = getFilterType()
+  
   if (trapezoidalMethodRadio && standardMethodRadio) {
-    if (currentMethod === CalculationMethod.TRAPEZOIDAL) {
-      trapezoidalMethodRadio.checked = true
-    } else {
+    // SGFilter only supports STANDARD method
+    if (filterType === 'sgfilter') {
+      trapezoidalMethodRadio.disabled = true
+      standardMethodRadio.disabled = false
       standardMethodRadio.checked = true
+    } else {
+      trapezoidalMethodRadio.disabled = false
+      standardMethodRadio.disabled = false
+      
+      if (currentMethod === CalculationMethod.TRAPEZOIDAL) {
+        trapezoidalMethodRadio.checked = true
+      } else {
+        standardMethodRadio.checked = true
+      }
     }
   }
 }
@@ -75,11 +100,12 @@ function updateCalculationMethodRadioButtons(): void {
 updateControlsVisibility()
 updateCalculationMethodRadioButtons()
 
-if (motionEstimatorRadio && kalmanFilterRadio) {
+if (motionEstimatorRadio && kalmanFilterRadio && sgFilterRadio) {
   motionEstimatorRadio.addEventListener('change', () => {
     if (motionEstimatorRadio.checked) {
       setFilterType('motionestimator')
       updateControlsVisibility()
+      updateCalculationMethodRadioButtons()
       if (currentGpsPoints.length > 0) {
         regeneratePlot()
       }
@@ -90,6 +116,18 @@ if (motionEstimatorRadio && kalmanFilterRadio) {
     if (kalmanFilterRadio.checked) {
       setFilterType('kalman')
       updateControlsVisibility()
+      updateCalculationMethodRadioButtons()
+      if (currentGpsPoints.length > 0) {
+        regeneratePlot()
+      }
+    }
+  })
+
+  sgFilterRadio.addEventListener('change', () => {
+    if (sgFilterRadio.checked) {
+      setFilterType('sgfilter')
+      updateControlsVisibility()
+      updateCalculationMethodRadioButtons()
       if (currentGpsPoints.length > 0) {
         regeneratePlot()
       }
@@ -345,6 +383,10 @@ const alphaVelocityValue = document.getElementById('alpha-velocity-value') as HT
 const alphaAccelerationSlider = document.getElementById('alpha-acceleration-slider') as HTMLInputElement | null
 const alphaAccelerationValue = document.getElementById('alpha-acceleration-value') as HTMLElement | null
 
+// Setup SGFilter length slider
+const sgFilterLengthSlider = document.getElementById('sg-filter-length-slider') as HTMLInputElement | null
+const sgFilterLengthValue = document.getElementById('sg-filter-length-value') as HTMLElement | null
+
 if (alphaSlider && alphaValue) {
   alphaSlider.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement
@@ -384,6 +426,19 @@ if (alphaAccelerationSlider && alphaAccelerationValue) {
   })
 }
 
+if (sgFilterLengthSlider && sgFilterLengthValue) {
+  sgFilterLengthSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const length = parseInt(target.value)
+    sgFilterLengthValue.textContent = length.toString()
+    setSGFilterLength(length)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
 // Setup Kalman Filter sliders
 // Process Noise (Q Matrix)
 const kalmanQPositionSlider = document.getElementById('kalman-q-position-slider') as HTMLInputElement | null
@@ -392,6 +447,12 @@ const kalmanQVelocitySlider = document.getElementById('kalman-q-velocity-slider'
 const kalmanQVelocityValue = document.getElementById('kalman-q-velocity-value') as HTMLElement | null
 const kalmanQAccelerationSlider = document.getElementById('kalman-q-acceleration-slider') as HTMLInputElement | null
 const kalmanQAccelerationValue = document.getElementById('kalman-q-acceleration-value') as HTMLElement | null
+const kalmanQKlSlider = document.getElementById('kalman-q-kl-slider') as HTMLInputElement | null
+const kalmanQKlValue = document.getElementById('kalman-q-kl-value') as HTMLElement | null
+const kalmanQKdSlider = document.getElementById('kalman-q-kd-slider') as HTMLInputElement | null
+const kalmanQKdValue = document.getElementById('kalman-q-kd-value') as HTMLElement | null
+const kalmanQRollSlider = document.getElementById('kalman-q-roll-slider') as HTMLInputElement | null
+const kalmanQRollValue = document.getElementById('kalman-q-roll-value') as HTMLElement | null
 
 // Measurement Noise (R Matrix)
 const kalmanRPositionSlider = document.getElementById('kalman-r-position-slider') as HTMLInputElement | null
@@ -434,6 +495,48 @@ if (kalmanQAccelerationSlider && kalmanQAccelerationValue) {
     const scaledValue = quadraticScaleAccelerationDisplay(value)
     kalmanQAccelerationValue.textContent = scaledValue.toFixed(4)
     setKalmanProcessNoiseAcceleration(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanQKlSlider && kalmanQKlValue) {
+  kalmanQKlSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScaleDisplay(value)
+    kalmanQKlValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoiseKl(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanQKdSlider && kalmanQKdValue) {
+  kalmanQKdSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScaleDisplay(value)
+    kalmanQKdValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoiseKd(value)
+    
+    if (currentGpsPoints.length > 0) {
+      regeneratePlot()
+    }
+  })
+}
+
+if (kalmanQRollSlider && kalmanQRollValue) {
+  kalmanQRollSlider.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement
+    const value = parseFloat(target.value)
+    const scaledValue = quadraticScaleDisplay(value)
+    kalmanQRollValue.textContent = scaledValue.toFixed(4)
+    setKalmanProcessNoiseRoll(value)
     
     if (currentGpsPoints.length > 0) {
       regeneratePlot()
@@ -801,6 +904,27 @@ function initializeSliderDefaults() {
     setKalmanProcessNoiseAcceleration(parseFloat(kalmanQAccelerationSlider.value))
     if (kalmanQAccelerationValue) {
       kalmanQAccelerationValue.textContent = quadraticScaleAccelerationDisplay(parseFloat(kalmanQAccelerationSlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanQKlSlider) {
+    setKalmanProcessNoiseKl(parseFloat(kalmanQKlSlider.value))
+    if (kalmanQKlValue) {
+      kalmanQKlValue.textContent = quadraticScaleDisplay(parseFloat(kalmanQKlSlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanQKdSlider) {
+    setKalmanProcessNoiseKd(parseFloat(kalmanQKdSlider.value))
+    if (kalmanQKdValue) {
+      kalmanQKdValue.textContent = quadraticScaleDisplay(parseFloat(kalmanQKdSlider.value)).toFixed(4)
+    }
+  }
+  
+  if (kalmanQRollSlider) {
+    setKalmanProcessNoiseRoll(parseFloat(kalmanQRollSlider.value))
+    if (kalmanQRollValue) {
+      kalmanQRollValue.textContent = quadraticScaleDisplay(parseFloat(kalmanQRollSlider.value)).toFixed(4)
     }
   }
   

@@ -473,16 +473,16 @@ export class KalmanFilter3D {
     this.lastMeasuredVelocity = undefined
   }
 
-  setProcessNoise(position: number, velocity: number, acceleration: number, wingsuit: number): void {
+  setProcessNoise(position: number, velocity: number, acceleration: number, kl: number, kd: number, roll: number): void {
     // Update process noise covariance matrix Q
     for (let i = 0; i < 3; i++) {
       this.Q[i][i] = position // Position process noise
       this.Q[i + 3][i + 3] = velocity // Velocity process noise
       this.Q[i + 6][i + 6] = acceleration // Acceleration process noise
     }
-    this.Q[9][9] = wingsuit   // kl process noise
-    this.Q[10][10] = wingsuit // kd process noise
-    this.Q[11][11] = wingsuit // roll process noise
+    this.Q[9][9] = kl     // kl process noise
+    this.Q[10][10] = kd   // kd process noise
+    this.Q[11][11] = roll // roll process noise
   }
 
   setMeasurementNoise(position: number, velocity: number): void {

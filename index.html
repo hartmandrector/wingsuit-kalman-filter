@@ -72,6 +72,8 @@
               <label for="motion-estimator">Motion Estimator</label>
               <input type="radio" id="kalman-filter" name="filter-type" value="kalman">
               <label for="kalman-filter">Kalman Filter</label>
+              <input type="radio" id="sg-filter" name="filter-type" value="sgfilter">
+              <label for="sg-filter">SG Filter</label>
             </div>
           </div>
 
@@ -102,6 +104,15 @@
             </div>
           </div>
 
+          <!-- SGFilter Controls -->
+          <div id="sg-filter-controls" style="display: none;">
+            <h4>Savitzky-Golay Filter Settings</h4>
+            <div id="sg-filter-length-control">
+              <label for="sg-filter-length-slider">Filter Length: <span id="sg-filter-length-value">15</span></label>
+              <input type="range" id="sg-filter-length-slider" min="5" max="25" step="2" value="15">
+            </div>
+          </div>
+
           <!-- Kalman Filter Controls -->
           <div id="kalman-filter-controls" style="display: none;">
             <h4>Process Noise (Q Matrix)</h4>
@@ -116,6 +127,18 @@
             <div id="kalman-q-acceleration-control">
               <label for="kalman-q-acceleration-slider">Acceleration: <span id="kalman-q-acceleration-value">10.00</span></label>
               <input type="range" id="kalman-q-acceleration-slider" min="0" max="1" step="0.01" value="0.37">
+            </div>
+            <div id="kalman-q-kl-control">
+              <label for="kalman-q-kl-slider">Kl: <span id="kalman-q-kl-value">0.01</span></label>
+              <input type="range" id="kalman-q-kl-slider" min="0" max="1" step="0.01" value="0.10">
+            </div>
+            <div id="kalman-q-kd-control">
+              <label for="kalman-q-kd-slider">Kd: <span id="kalman-q-kd-value">0.01</span></label>
+              <input type="range" id="kalman-q-kd-slider" min="0" max="1" step="0.01" value="0.10">
+            </div>
+            <div id="kalman-q-roll-control">
+              <label for="kalman-q-roll-slider">Roll: <span id="kalman-q-roll-value">0.001</span></label>
+              <input type="range" id="kalman-q-roll-slider" min="0" max="1" step="0.01" value="0.10">
             </div>
             
             <h4>Measurement Noise (R Matrix)</h4>

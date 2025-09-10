@@ -2,22 +2,29 @@ import { MotionEstimator, CalculationMethod } from './motionestimator.js'
 import { setReference, ENUToLatLngAlt, latLonAltToENU } from './enu.js'
 import type { MLocation, PlotPoint, Vector3 } from './types.js'
 import { KalmanFilter3D, CalculationMethod as KalmanCalculationMethod } from './kalman.js'
+import { SGFilter, CalculationMethod as SGCalculationMethod } from './SGFilter.js'
 import { sub, magnitude } from './vector.js'
 import { calculateJerk, calculateCurvature, calculateVelocityChangeRate } from './smoothness.js'
 
 // Which filter to use
-let filterType: 'motionestimator' | 'kalman' = 'motionestimator'
+let filterType: 'motionestimator' | 'kalman' | 'sgfilter' = 'motionestimator'
 
 // Motion Estimator parameters
 let currentAlpha = 0.12
 let currentAlphaVelocity = 0.18
 let currentAlphaAcceleration = 0.17
 
+// SGFilter parameters
+let sgFilterLength = 15
+
 // Kalman Filter parameters - matches slider defaults
 let kalmanProcessNoise = {
   position: 1.4401,    // quadraticScale(0.24) 
   velocity: 0.4226,    // quadraticScale(0.13)
-  acceleration: 68.4501 // quadraticScaleAcceleration(0.37)
+  acceleration: 68.4501, // quadraticScaleAcceleration(0.37)
+  kl: 0.01,            // quadraticScale(0.10)
+  kd: 0.01,            // quadraticScale(0.10)
+  roll: 0.001          // quadraticScale(0.10)
 }
 let kalmanMeasurementNoise = {
   position: 1.21,      // signedQuadraticScale(0.22)
@@ -34,6 +41,10 @@ function createEstimator() {
       alphaAcceleration: currentAlphaAcceleration, 
       estimateVelocity: true 
     })
+  } else if (filterType === 'sgfilter') {
+    return new SGFilter({
+      filterLength: sgFilterLength
+    })
   } else {
     const kalman = new KalmanFilter3D()
     updateKalmanParameters(kalman)
@@ -47,7 +58,9 @@ function updateKalmanParameters(kalman: KalmanFilter3D) {
     kalmanProcessNoise.position,
     kalmanProcessNoise.velocity,
     kalmanProcessNoise.acceleration,
-    0.01 // Fixed wingsuit parameter
+    kalmanProcessNoise.kl,
+    kalmanProcessNoise.kd,
+    kalmanProcessNoise.roll
   )
   
   // Update measurement noise covariance (R matrix)  
@@ -59,12 +72,12 @@ function updateKalmanParameters(kalman: KalmanFilter3D) {
 
 const refreshRate = 90 // Hz
 
-export function setFilterType(type: 'motionestimator' | 'kalman'): void {
+export function setFilterType(type: 'motionestimator' | 'kalman' | 'sgfilter'): void {
   filterType = type
   estimator = createEstimator()
 }
 
-export function getFilterType(): 'motionestimator' | 'kalman' {
+export function getFilterType(): 'motionestimator' | 'kalman' | 'sgfilter' {
   return filterType
 }
 
@@ -88,6 +101,18 @@ export function setAlphaAcceleration(alphaAcceleration: number): void {
   if (filterType === 'motionestimator') {
     estimator = createEstimator()
   }
+}
+
+// SGFilter controls
+export function setSGFilterLength(length: number): void {
+  sgFilterLength = length
+  if (filterType === 'sgfilter') {
+    (estimator as SGFilter).setFilterLength(length)
+  }
+}
+
+export function getSGFilterLength(): number {
+  return sgFilterLength
 }
 
 // Kalman Filter controls with logarithmic scaling
@@ -180,9 +205,32 @@ export function setKalmanMeasurementNoiseVelocity(value: number): void {
   }
 }
 
+export function setKalmanProcessNoiseKl(value: number): void {
+  kalmanProcessNoise.kl = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanProcessNoiseKd(value: number): void {
+  kalmanProcessNoise.kd = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
+export function setKalmanProcessNoiseRoll(value: number): void {
+  kalmanProcessNoise.roll = quadraticScale(value)
+  if (filterType === 'kalman') {
+    updateKalmanParameters(estimator as KalmanFilter3D)
+  }
+}
+
 export function setCalculationMethod(method: CalculationMethod): void {
   if (filterType === 'motionestimator') {
     (estimator as MotionEstimator).setCalculationMethod(method)
+  } else if (filterType === 'sgfilter') {
+    (estimator as SGFilter).setCalculationMethod(method as SGCalculationMethod)
   } else if (filterType === 'kalman') {
     (estimator as KalmanFilter3D).setCalculationMethod(method as KalmanCalculationMethod)
   }
@@ -191,6 +239,8 @@ export function setCalculationMethod(method: CalculationMethod): void {
 export function getCalculationMethod(): CalculationMethod {
   if (filterType === 'motionestimator') {
     return (estimator as MotionEstimator).getCalculationMethod()
+  } else if (filterType === 'sgfilter') {
+    return (estimator as SGFilter).getCalculationMethod() as CalculationMethod
   } else if (filterType === 'kalman') {
     return (estimator as KalmanFilter3D).getCalculationMethod() as CalculationMethod
   }
